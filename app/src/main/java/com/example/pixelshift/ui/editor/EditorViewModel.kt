@@ -130,10 +130,19 @@ class EditorViewModel : ViewModel() {
                 viewModelScope.launch {
                     _uiState.update { it.copy(isLoading = true) }
                     try {
-                        val processed = imageProcessor.process(original, config)
-                        _uiState.update { it.copy(preview = processed, isLoading = false) }
+                        // Step 1: Smooth
+                        var current = imageProcessor.smooth(original, config)
+                        _uiState.update { it.copy(preview = current) }
+                        
+                        // Step 2: Pixelate
+                        current = imageProcessor.pixelate(current, config)
+                        _uiState.update { it.copy(preview = current) }
+
+                        // Step 3: Quantize
+                        current = imageProcessor.quantize(current, config)
+                        _uiState.update { it.copy(preview = current, isLoading = false) }
                     } catch (e: Exception) {
-                        // ignore
+                        _uiState.update { it.copy(isLoading = false) }
                     }
                 }
     }
@@ -157,6 +166,8 @@ class EditorViewModel : ViewModel() {
         // Upscale logic
         val finalBitmap =
                 if (useUpscale && config.pixelSize > 1) {
+                    // Start with preview (which is small if pixelated)
+                    // If we want pixel perfect upscale to original size:
                     Bitmap.createScaledBitmap(preview, original.width, original.height, false)
                 } else {
                     preview

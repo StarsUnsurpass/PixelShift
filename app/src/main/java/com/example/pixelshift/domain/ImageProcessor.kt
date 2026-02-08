@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 
 interface ImageProcessor {
     suspend fun process(original: Bitmap, config: ProcessingConfig): Bitmap
+    suspend fun smooth(bitmap: Bitmap, config: ProcessingConfig): Bitmap
+    suspend fun pixelate(bitmap: Bitmap, config: ProcessingConfig): Bitmap
+    suspend fun quantize(bitmap: Bitmap, config: ProcessingConfig): Bitmap
 }
 
 data class ProcessingConfig(

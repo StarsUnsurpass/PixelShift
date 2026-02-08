@@ -13,59 +13,58 @@ class KotlinImageProcessor : ImageProcessor {
 
     override suspend fun process(original: Bitmap, config: ProcessingConfig): Bitmap =
             withContext(Dispatchers.Default) {
-                // 1. Pixelate (Downsample)
-                val pixelated =
-                        if (config.pixelSize > 1) {
-                            val width = original.width / config.pixelSize
-                            val height = original.height / config.pixelSize
-                            if (width == 0 || height == 0) return@withContext original
+                var current = original
+                current = smooth(current, config)
+                current = pixelate(current, config)
+                current = quantize(current, config)
+                current
+            }
 
-                            // 1. Pre-process: Smoothing (Optional)
-                            val source =
-                                    if (config.smoothImage) {
-                                        applyMedianFilter(original)
-                                    } else {
-                                        original
-                                    }
-
-                            // 2. Downsample: ALWAYS Nearest Neighbor for pixel art look
-                            var processed = Bitmap.createScaledBitmap(source, width, height, false)
-
-                            // 3. Post-process: Edge Enhancement (Optional)
-                            if (config.enhanceEdges) {
-                                processed = applySobelEdgeDetection(processed)
-                            }
-
-                            processed
-                        } else {
-                            original.copy(Bitmap.Config.ARGB_8888, true)
-                        }
-
-                // 2. Process Pixels (Contrast -> Dither/Quantize)
-                val width = pixelated.width
-                val height = pixelated.height
-                val pixels = IntArray(width * height)
-                pixelated.getPixels(pixels, 0, width, 0, 0, width, height)
-
-                val paletteColors = getPaletteColors(config.palette)
-
-                // If no palette and no dither, just contrast/saturation
-                if (config.palette is Palette.None && config.ditherType == DitherType.None) {
-                    applyContrastSaturation(pixels, config.contrast, config.saturation)
-                    val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    result.setPixels(pixels, 0, width, 0, 0, width, height)
-                    return@withContext if (config.pixelSize > 1) {
-                        Bitmap.createScaledBitmap(result, original.width, original.height, false)
-                    } else result
+    override suspend fun smooth(bitmap: Bitmap, config: ProcessingConfig): Bitmap =
+            withContext(Dispatchers.Default) {
+                if (config.smoothImage) {
+                    applyKuwaharaFilter(bitmap, 5) // Kernel size 5 is a good balance
+                } else {
+                    bitmap
                 }
+            }
 
-                // Apply contrast/saturation first
+    override suspend fun pixelate(bitmap: Bitmap, config: ProcessingConfig): Bitmap =
+            withContext(Dispatchers.Default) {
+                if (config.pixelSize > 1) {
+                    val width = bitmap.width / config.pixelSize
+                    val height = bitmap.height / config.pixelSize
+                    if (width == 0 || height == 0) return@withContext bitmap
+                    
+                    // Downsample
+                    val downscaled = Bitmap.createScaledBitmap(bitmap, width, height, false)
+                    
+                    // Optional: Edge Enhancement after downscaling (before quantization)
+                     if (config.enhanceEdges) {
+                        applySobelEdgeDetection(downscaled)
+                    } else {
+                        downscaled
+                    }
+                } else {
+                    bitmap
+                }
+            }
+
+    override suspend fun quantize(bitmap: Bitmap, config: ProcessingConfig): Bitmap =
+            withContext(Dispatchers.Default) {
+                val width = bitmap.width
+                val height = bitmap.height
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+                // Apply simple contrast/saturation first
                 applyContrastSaturation(pixels, config.contrast, config.saturation)
 
+                val paletteColors = getPaletteColors(config.palette, pixels)
+                
                 // Dithering & Quantization
-                val resultPixels =
-                        if (config.ditherType != DitherType.None || config.palette !is Palette.None
-                        ) {
+                 val resultPixels =
+                        if (config.ditherType != DitherType.None || config.palette !is Palette.None) {
                             applyDithering(pixels, width, height, config.ditherType, paletteColors)
                         } else {
                             pixels
@@ -73,11 +72,53 @@ class KotlinImageProcessor : ImageProcessor {
 
                 val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
-
+                
+                // If we pixelated, we might want to scale back up for display, 
+                // BUT the requirements say "progress", and usually we want to see the pixelated version small or large?
+                // The original code scaled back up if pixelSize > 1. 
+                // Let's keep it consistent: IF it was downscaled, we rely on the UI to scale it up for view or 
+                // we scale it back up here. The previous implementation returned a SCALED UP bitmap.
+                // However, for "pixelate" step, returning a tiny bitmap is technically correct.
+                // But for the final output, user might expect original logic.
+                // Let's return the small bitmap here and let `process` or UI handle upscale?
+                // Wait, `process` returned scaled UP bitmap in original code.
+                // Re-reading original code:
+                // `return@withContext if (config.pixelSize > 1) { Bitmap.createScaledBitmap(...) }`
+                // AND
+                // `if (width == 0 || height == 0) return@withContext original`
+                
+                // The task is to "optimize pixel conversion".
+                // If I return small bitmap, the UI needs to handle it.
+                // `EditorViewModel` has `usePixelPerfectUpscale`.
+                // Let's return the actual processed bitmap (small if pixelated) from `quantize`.
+                // The UI viewing it should handle scaling. 
+                // BUT `EditorViewModel.exportImage` handles upscale.
+                // The `process` method needs to return consistent result with old `process`.
+                // Old `process` returned SCALED UP bitmap if `pixelSize > 1` at the end (lines 57-59 was inside an early return, but notice lines 77 just returned `resultBitmap` which was created from `resultPixels` at line 74.
+                // Wait, line 45 `width = pixelated.width`. If `pixelated` was downscaled, `resultBitmap` is small.
+                // So the OLD `process` returned a SMALL bitmap (if pixelated). 
+                // UNLESS `config.palette is Palette.None && config.ditherType == DitherType.None` (Line 53), which did explicitly scale back up!
+                // This means the old code was inconsistent!
+                // If I have a palette, it returns small bitmap. If I don't, it returns big bitmap?
+                // Let's look at `EditorViewModel.exportImage`:
+                // `if (useUpscale && config.pixelSize > 1) { Bitmap.createScaledBitmap(preview, original.width, original.height, false) }`
+                // This implies `preview` (output of `process`) is mostly small.
+                
                 resultBitmap
             }
 
-    private fun getPaletteColors(palette: Palette): IntArray {
+            is Palette.Auto -> {
+                // Use the quantize usage context? 
+                // Wait, getPaletteColors is called from quantize, but it doesn't pass the bitmap or pixels!
+                // I need to change getPaletteColors signature or the call site.
+                // call site: `val paletteColors = getPaletteColors(config.palette)`
+                // It seems I need to pass pixels to it if I want to generate palette from image.
+                IntArray(0) 
+            }
+        }
+    }
+    
+    private fun getPaletteColors(palette: Palette, pixels: IntArray? = null): IntArray {
         return when (palette) {
             is Palette.None -> IntArray(0)
             is Palette.BW -> intArrayOf(Color.BLACK, Color.WHITE)
@@ -162,8 +203,93 @@ class KotlinImageProcessor : ImageProcessor {
                             0xFF000000.toInt(),
                             0xFF000000.toInt()
                     )
-            is Palette.Auto -> IntArray(0) // TODO: Implement K-Means
+            is Palette.Auto -> {
+                if (pixels != null && pixels.isNotEmpty()) {
+                    generatePaletteKMeans(pixels, palette.colorCount)
+                } else {
+                    IntArray(0)
+                }
+            }
         }
+    }
+
+    private fun generatePaletteKMeans(pixels: IntArray, colorCount: Int): IntArray {
+        if (pixels.isEmpty()) return IntArray(0)
+        
+        // 1. Initialize centroids (randomly pick from pixels)
+        val centroids = IntArray(colorCount)
+        val random = java.util.Random()
+        for (i in 0 until colorCount) {
+            centroids[i] = pixels[random.nextInt(pixels.size)]
+        }
+        
+        val assignments = IntArray(pixels.size)
+        var changed = true
+        var iterations = 0
+        val maxIterations = 10 // Limit iterations for performance
+        
+        while (changed && iterations < maxIterations) {
+            changed = false
+            iterations++
+            
+            // 2. Assign pixels to nearest centroid
+            // Sampling for speed: we can just use a subset of pixels for clustering if image is huge,
+            // but for now let's try full or strided.
+            // Using full pixels for now 
+            
+            val sumsR = LongArray(colorCount)
+            val sumsG = LongArray(colorCount)
+            val sumsB = LongArray(colorCount)
+            val counts = IntArray(colorCount)
+            
+            for (i in pixels.indices) {
+                val p = pixels[i]
+                var minDist = Double.MAX_VALUE
+                var nearestIndex = 0
+                
+                val r = Color.red(p)
+                val g = Color.green(p)
+                val b = Color.blue(p)
+                
+                for (k in 0 until colorCount) {
+                    val c = centroids[k]
+                    val cr = Color.red(c)
+                    val cg = Color.green(c)
+                    val cb = Color.blue(c)
+                    
+                    val dist = ((r - cr) * (r - cr) + (g - cg) * (g - cg) + (b - cb) * (b - cb)).toDouble()
+                    if (dist < minDist) {
+                        minDist = dist
+                        nearestIndex = k
+                    }
+                }
+                
+                if (assignments[i] != nearestIndex) {
+                    assignments[i] = nearestIndex
+                    changed = true
+                }
+                
+                sumsR[nearestIndex] += r.toLong()
+                sumsG[nearestIndex] += g.toLong()
+                sumsB[nearestIndex] += b.toLong()
+                counts[nearestIndex]++
+            }
+            
+            // 3. Update centroids
+            for (k in 0 until colorCount) {
+                if (counts[k] > 0) {
+                    val avgR = (sumsR[k] / counts[k]).toInt()
+                    val avgG = (sumsG[k] / counts[k]).toInt()
+                    val avgB = (sumsB[k] / counts[k]).toInt()
+                    centroids[k] = Color.rgb(avgR, avgG, avgB)
+                } else {
+                    // Re-init empty cluster
+                     centroids[k] = pixels[random.nextInt(pixels.size)]
+                }
+            }
+        }
+        
+        return centroids
     }
 
     private fun applyContrastSaturation(pixels: IntArray, contrast: Float, saturation: Float) {
@@ -373,5 +499,93 @@ class KotlinImageProcessor : ImageProcessor {
         val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         result.setPixels(newPixels, 0, width, 0, 0, width, height)
         return result
+    }
+    private fun applyKuwaharaFilter(bitmap: Bitmap, kernelSize: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        val newPixels = IntArray(width * height)
+        val radius = kernelSize / 2
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                // Region 1: (x-r, y-r) to (x, y)
+                val stats1 = calcKuwaharaStats(pixels, width, height, x - radius, y - radius, x, y)
+                // Region 2: (x, y-r) to (x+r, y)
+                val stats2 = calcKuwaharaStats(pixels, width, height, x, y - radius, x + radius, y)
+                // Region 3: (x-r, y) to (x, y+r)
+                val stats3 = calcKuwaharaStats(pixels, width, height, x - radius, y, x, y + radius)
+                // Region 4: (x, y) to (x+r, y+r)
+                val stats4 = calcKuwaharaStats(pixels, width, height, x, y, x + radius, y + radius)
+
+                // Find min variance
+                var minVar = stats1.first
+                var resultColor = stats1.second
+
+                if (stats2.first < minVar) { minVar = stats2.first; resultColor = stats2.second }
+                if (stats3.first < minVar) { minVar = stats3.first; resultColor = stats3.second }
+                if (stats4.first < minVar) { minVar = stats4.first; resultColor = stats4.second }
+
+                newPixels[y * width + x] = resultColor
+            }
+        }
+
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        result.setPixels(newPixels, 0, width, 0, 0, width, height)
+        return result
+    }
+
+    private fun calcKuwaharaStats(
+        pixels: IntArray, 
+        width: Int, 
+        height: Int, 
+        startX: Int, 
+        startY: Int, 
+        endX: Int, 
+        endY: Int
+    ): Pair<Double, Int> {
+        var count = 0
+        var sumR = 0.0
+        var sumG = 0.0
+        var sumB = 0.0
+        var sumSqR = 0.0
+        var sumSqG = 0.0
+        var sumSqB = 0.0
+
+        for (qy in startY..endY) {
+            val safeY = qy.coerceIn(0, height - 1)
+            for (qx in startX..endX) {
+                val safeX = qx.coerceIn(0, width - 1)
+                val p = pixels[safeY * width + safeX]
+                val r = Color.red(p)
+                val g = Color.green(p)
+                val b = Color.blue(p)
+
+                sumR += r
+                sumG += g
+                sumB += b
+                sumSqR += r * r
+                sumSqG += g * g
+                sumSqB += b * b
+                count++
+            }
+        }
+
+        if (count == 0) return 0.0 to Color.BLACK
+
+        val meanR = sumR / count
+        val meanG = sumG / count
+        val meanB = sumB / count
+
+        val meanColor = Color.rgb(meanR.toInt(), meanG.toInt(), meanB.toInt())
+
+        val varR = (sumSqR / count) - (meanR * meanR)
+        val varG = (sumSqG / count) - (meanG * meanG)
+        val varB = (sumSqB / count) - (meanB * meanB)
+
+        val totalVariance = varR + varG + varB
+        return totalVariance to meanColor
     }
 }
