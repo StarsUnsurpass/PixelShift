@@ -32,7 +32,10 @@ data class EditorUiState(
         val preview: Bitmap? = null,
         val config: ProcessingConfig = ProcessingConfig(),
         val isLoading: Boolean = false,
-        val error: String? = null
+        val error: String? = null,
+        // Output settings
+        val usePixelPerfectUpscale: Boolean = true,
+        val outputFormat: Bitmap.CompressFormat = Bitmap.CompressFormat.PNG
 )
 
 class EditorViewModel : ViewModel() {
@@ -42,9 +45,7 @@ class EditorViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
 
-    // Separate flow for config to handle debounce
     private val _configFlow = MutableStateFlow(ProcessingConfig())
-
     private var processingJob: Job? = null
 
     init {
@@ -54,7 +55,7 @@ class EditorViewModel : ViewModel() {
     @OptIn(FlowPreview::class)
     private fun setupProcessingPipeline() {
         _configFlow
-                .debounce(200L) // Debounce slider changes
+                .debounce(200L)
                 .onEach { config -> processImage(config) }
                 .launchIn(viewModelScope)
     }
@@ -76,41 +77,37 @@ class EditorViewModel : ViewModel() {
                                 MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
                             }
                         }
-
-                // For a robust app, we should handle EXIF orientation here.
-                // Assuming Coil or system handles it, but Bitmap might not.
-                // For MVP, skipping EXIF rotation fix.
-
                 _uiState.update { it.copy(original = bitmap, preview = bitmap, isLoading = false) }
-                // Trigger initial process
                 _configFlow.value = _uiState.value.config
                 processImage(_uiState.value.config)
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = "Failed to load image: ${e.message}", isLoading = false)
-                }
+                _uiState.update { it.copy(error = "无法加载图片: ${e.message}", isLoading = false) }
             }
         }
     }
 
     fun updatePixelSize(size: Int) {
-        val newConfig = _uiState.value.config.copy(pixelSize = size)
-        updateConfig(newConfig)
+        updateConfig(_uiState.value.config.copy(pixelSize = size))
     }
 
     fun updatePalette(palette: Palette) {
-        val newConfig = _uiState.value.config.copy(palette = palette)
-        updateConfig(newConfig)
+        updateConfig(_uiState.value.config.copy(palette = palette))
     }
 
     fun updateDither(ditherType: DitherType) {
-        val newConfig = _uiState.value.config.copy(ditherType = ditherType)
-        updateConfig(newConfig)
+        updateConfig(_uiState.value.config.copy(ditherType = ditherType))
     }
 
     fun updateContrast(contrast: Float) {
-        val newConfig = _uiState.value.config.copy(contrast = contrast)
-        updateConfig(newConfig)
+        updateConfig(_uiState.value.config.copy(contrast = contrast))
+    }
+
+    fun togglePixelPerfectUpscale(enabled: Boolean) {
+        _uiState.update { it.copy(usePixelPerfectUpscale = enabled) }
+    }
+
+    fun setOutputFormat(format: Bitmap.CompressFormat) {
+        _uiState.update { it.copy(outputFormat = format) }
     }
 
     private fun updateConfig(config: ProcessingConfig) {
@@ -120,7 +117,6 @@ class EditorViewModel : ViewModel() {
 
     private fun processImage(config: ProcessingConfig) {
         val original = _uiState.value.original ?: return
-
         processingJob?.cancel()
         processingJob =
                 viewModelScope.launch {
@@ -129,21 +125,45 @@ class EditorViewModel : ViewModel() {
                         val processed = imageProcessor.process(original, config)
                         _uiState.update { it.copy(preview = processed, isLoading = false) }
                     } catch (e: Exception) {
-                        // Ignore cancellation or error
+                        // ignore
                     }
                 }
     }
 
-    fun exportImage(
-            context: Context,
-            filename: String = "pixelshift_${System.currentTimeMillis()}.png"
-    ): Uri? {
-        val finalBitmap = uiState.value.preview ?: return null
+    fun exportImage(context: Context, filenamePrefix: String = "pixelshift"): Uri? {
+        val original = uiState.value.original ?: return null
+        val preview = uiState.value.preview ?: return null
+        val config = uiState.value.config
+        val useUpscale = uiState.value.usePixelPerfectUpscale
+        val format = uiState.value.outputFormat
+
+        val extension =
+                when (format) {
+                    Bitmap.CompressFormat.PNG -> "png"
+                    Bitmap.CompressFormat.JPEG -> "jpg"
+                    Bitmap.CompressFormat.WEBP -> "webp"
+                    else -> "png"
+                }
+        val filename = "${filenamePrefix}_${System.currentTimeMillis()}.$extension"
+
+        // Upscale logic
+        val finalBitmap =
+                if (useUpscale && config.pixelSize > 1) {
+                    Bitmap.createScaledBitmap(preview, original.width, original.height, false)
+                } else {
+                    preview
+                }
 
         val contentValues =
                 ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    val mimeType =
+                            when (format) {
+                                Bitmap.CompressFormat.JPEG -> "image/jpeg"
+                                Bitmap.CompressFormat.WEBP -> "image/webp"
+                                else -> "image/png"
+                            }
+                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PixelShift")
                         put(MediaStore.Images.Media.IS_PENDING, 1)
@@ -163,7 +183,7 @@ class EditorViewModel : ViewModel() {
             uri = resolver.insert(collection, contentValues)
             uri?.let { it ->
                 resolver.openOutputStream(it)?.use { outputStream ->
-                    finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                    finalBitmap.compress(format, 100, outputStream)
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     contentValues.clear()

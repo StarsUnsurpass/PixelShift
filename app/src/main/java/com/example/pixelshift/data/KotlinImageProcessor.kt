@@ -57,12 +57,7 @@ class KotlinImageProcessor : ImageProcessor {
                 val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
 
-                // 3. Upscale if needed (Nearest Neighbor)
-                if (config.pixelSize > 1) {
-                    Bitmap.createScaledBitmap(resultBitmap, original.width, original.height, false)
-                } else {
-                    resultBitmap
-                }
+                resultBitmap
             }
 
     private fun getPaletteColors(palette: Palette): IntArray {
