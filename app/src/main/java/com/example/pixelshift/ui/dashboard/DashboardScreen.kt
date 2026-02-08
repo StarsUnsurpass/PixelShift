@@ -11,8 +11,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,15 +29,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.pixelshift.ui.Screen
 import com.example.pixelshift.ui.theme.ThemeViewModel
+import com.example.pixelshift.util.HapticFeedbackManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel? = null) {
         val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+        val view = LocalView.current
+
+        // Safely collect state if viewModel is present
+        val themeState = themeViewModel?.themeState?.collectAsState()?.value
+        val hapticEnabled = themeState?.hapticFeedbackEnabled ?: true
 
         Scaffold(
                 modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -47,21 +53,21 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                                 title = { Text("PixelShift 像素转换") },
                                 scrollBehavior = scrollBehavior,
                                 actions = {
-                                        if (themeViewModel != null) {
-                                                val isDark by
-                                                        themeViewModel.isDarkTheme.collectAsState()
-                                                IconButton(
-                                                        onClick = { themeViewModel.toggleTheme() }
-                                                ) {
-                                                        Icon(
-                                                                imageVector =
-                                                                        if (isDark)
-                                                                                Icons.Filled
-                                                                                        .LightMode
-                                                                        else Icons.Filled.DarkMode,
-                                                                contentDescription = "Toggle Theme"
+                                        IconButton(
+                                                onClick = {
+                                                        HapticFeedbackManager.performHapticFeedback(
+                                                                view,
+                                                                hapticEnabled
+                                                        )
+                                                        navController.navigate(
+                                                                Screen.Settings.route
                                                         )
                                                 }
+                                        ) {
+                                                Icon(
+                                                        imageVector = Icons.Default.Settings,
+                                                        contentDescription = "Settings"
+                                                )
                                         }
                                 }
                         )
@@ -78,7 +84,13 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                                 ToolCard(
                                         title = "8位转换器",
                                         icon = Icons.Default.Apps,
-                                        onClick = { navController.navigate(Screen.Editor.route) }
+                                        onClick = {
+                                                HapticFeedbackManager.performHapticFeedback(
+                                                        view,
+                                                        hapticEnabled
+                                                )
+                                                navController.navigate(Screen.Editor.route)
+                                        }
                                 )
                         }
                         // Future tools can be added here

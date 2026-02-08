@@ -9,7 +9,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -23,15 +22,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            val themeViewModel: ThemeViewModel by viewModels()
+            val themeViewModel: ThemeViewModel = viewModels<ThemeViewModel>().value
+            val themeState by themeViewModel.themeState.collectAsState()
             val systemDark = isSystemInDarkTheme()
 
-            // Sync with system theme on first launch (simple approach)
-            LaunchedEffect(Unit) { themeViewModel.setTheme(systemDark) }
+            val isDark =
+                    when (themeState.themeMode) {
+                        "LIGHT" -> false
+                        "DARK" -> true
+                        else -> systemDark
+                    }
 
-            val isDark by themeViewModel.isDarkTheme.collectAsState()
-
-            PixelShiftTheme(darkTheme = isDark) {
+            PixelShiftTheme(
+                    darkTheme = isDark,
+                    dynamicColor = themeState.useDynamicColor,
+                    themeColor = themeState.themeColor
+            ) {
                 // A surface container using the 'background' color from the theme
                 Surface(
                         modifier = Modifier.fillMaxSize(),

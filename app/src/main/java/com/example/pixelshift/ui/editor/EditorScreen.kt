@@ -41,7 +41,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -50,13 +50,23 @@ import com.example.pixelshift.domain.DitherType
 import com.example.pixelshift.domain.Palette
 import com.example.pixelshift.ui.components.CommonTopBar
 import com.example.pixelshift.ui.components.checkerboardBackground
+import com.example.pixelshift.ui.theme.ThemeViewModel
+import com.example.pixelshift.util.HapticFeedbackManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditorScreen(navController: NavController, viewModel: EditorViewModel = viewModel()) {
+fun EditorScreen(
+        navController: NavController,
+        viewModel: EditorViewModel = viewModel(),
+        themeViewModel: ThemeViewModel? = null
+) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+
+    // Safely collect state if viewModel is present
+    val themeState = themeViewModel?.themeState?.collectAsState()?.value
+    val hapticEnabled = themeState?.hapticFeedbackEnabled ?: true
 
     val launcher =
             rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) {
@@ -83,9 +93,9 @@ fun EditorScreen(navController: NavController, viewModel: EditorViewModel = view
                                     onClick = {
                                         val uri = viewModel.exportImage(context)
                                         if (uri != null) {
-                                            haptic.performHapticFeedback(
-                                                    androidx.compose.ui.hapticfeedback
-                                                            .HapticFeedbackType.LongPress
+                                            HapticFeedbackManager.performHapticFeedback(
+                                                    view,
+                                                    hapticEnabled
                                             )
                                             Toast.makeText(context, "已保存", Toast.LENGTH_SHORT)
                                                     .show()
@@ -105,7 +115,8 @@ fun EditorScreen(navController: NavController, viewModel: EditorViewModel = view
                 uiState = uiState,
                 viewModel = viewModel,
                 launcher = launcher,
-                modifier = Modifier.padding(paddingValues)
+                modifier = Modifier.padding(paddingValues),
+                hapticEnabled = hapticEnabled
         )
     }
 }
@@ -115,10 +126,11 @@ fun EditorControls(
         uiState: EditorUiState,
         viewModel: EditorViewModel,
         launcher: ManagedActivityResultLauncher<String, Uri?>,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        hapticEnabled: Boolean = true
 ) {
-    val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    val view = LocalView.current
 
     LazyColumn(
             modifier = modifier.fillMaxSize(),
@@ -202,6 +214,7 @@ fun EditorControls(
                     }
                     OutlinedButton(
                             onClick = {
+                                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
                                 Toast.makeText(context, "功能开发中 (Coming Soon)", Toast.LENGTH_SHORT)
                                         .show()
                             }
@@ -226,10 +239,7 @@ fun EditorControls(
                             value = uiState.config.pixelSize.toFloat(),
                             onValueChange = { viewModel.updatePixelSize(it.toInt()) },
                             onValueChangeFinished = {
-                                haptic.performHapticFeedback(
-                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType
-                                                .LongPress
-                                )
+                                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
                             },
                             valueRange = 1f..100f,
                             steps = 99
@@ -254,12 +264,16 @@ fun EditorControls(
                         PaletteChip(
                                 palette = palette,
                                 selected = uiState.config.palette == palette,
-                                onClick = { viewModel.updatePalette(palette) }
+                                onClick = {
+                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                    viewModel.updatePalette(palette)
+                                }
                         )
                     }
                     item {
                         AssistChip(
                                 onClick = {
+                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
                                     Toast.makeText(
                                                     context,
                                                     "功能开发中 (Coming Soon)",
@@ -283,7 +297,13 @@ fun EditorControls(
                         items(DitherType.values()) { type ->
                             FilterChip(
                                     selected = uiState.config.ditherType == type,
-                                    onClick = { viewModel.updateDither(type) },
+                                    onClick = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                        viewModel.updateDither(type)
+                                    },
                                     label = { Text(type.displayName) }
                             )
                         }
@@ -298,10 +318,7 @@ fun EditorControls(
                             value = uiState.config.contrast,
                             onValueChange = { viewModel.updateContrast(it) },
                             onValueChangeFinished = {
-                                haptic.performHapticFeedback(
-                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType
-                                                .LongPress
-                                )
+                                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
                             },
                             valueRange = 0.5f..2.0f
                     )
@@ -325,7 +342,13 @@ fun EditorControls(
                         formats.forEach { format ->
                             FilterChip(
                                     selected = uiState.outputFormat == format,
-                                    onClick = { viewModel.setOutputFormat(format) },
+                                    onClick = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                        viewModel.setOutputFormat(format)
+                                    },
                                     label = { Text(format.name) }
                             )
                         }
@@ -340,7 +363,10 @@ fun EditorControls(
                         Text("Pixel Perfect Upscale (防止模糊)")
                         Switch(
                                 checked = uiState.usePixelPerfectUpscale,
-                                onCheckedChange = { viewModel.togglePixelPerfectUpscale(it) }
+                                onCheckedChange = {
+                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                    viewModel.togglePixelPerfectUpscale(it)
+                                }
                         )
                     }
                 }
