@@ -6,18 +6,11 @@ import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.*
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CropRotate
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -48,12 +39,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.pixelshift.domain.DitherType
 import com.example.pixelshift.domain.Palette
-import com.example.pixelshift.ui.components.CommonTopBar
+import com.example.pixelshift.ui.components.AdaptiveLayoutScreen
+import com.example.pixelshift.ui.components.BottomButtonsBlock
+import com.example.pixelshift.ui.components.PreferenceItem
+import com.example.pixelshift.ui.components.TitleItem
 import com.example.pixelshift.ui.components.checkerboardBackground
 import com.example.pixelshift.ui.theme.ThemeViewModel
 import com.example.pixelshift.util.HapticFeedbackManager
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
         navController: NavController,
@@ -64,7 +57,6 @@ fun EditorScreen(
     val context = LocalContext.current
     val view = LocalView.current
 
-    // Safely collect state if viewModel is present
     val themeState = themeViewModel?.themeState?.collectAsState()?.value
     val hapticEnabled = themeState?.hapticFeedbackEnabled ?: true
 
@@ -80,44 +72,83 @@ fun EditorScreen(
         }
     }
 
-    Scaffold(
-            topBar = {
-                CommonTopBar(
-                        title = "PixelShift",
-                        onBack = { navController.popBackStack() },
-                        actions = {
-                            IconButton(onClick = { /* Share TODO */}) {
-                                Icon(Icons.Default.Share, contentDescription = "分享")
-                            }
-                            IconButton(
-                                    onClick = {
-                                        val uri = viewModel.exportImage(context)
-                                        if (uri != null) {
-                                            HapticFeedbackManager.performHapticFeedback(
-                                                    view,
-                                                    hapticEnabled
-                                            )
-                                            Toast.makeText(context, "已保存", Toast.LENGTH_SHORT)
-                                                    .show()
-                                        } else {
-                                            Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT)
-                                                    .show()
-                                        }
-                                    }
-                            ) { Icon(Icons.Default.Save, contentDescription = "保存") }
-                        }
+    AdaptiveLayoutScreen(
+            title = { Text("PixelShift") },
+            onGoBack = { navController.popBackStack() },
+            actions = {
+                IconButton(onClick = { /* Share TODO */}) {
+                    Icon(Icons.Default.Share, contentDescription = "分享")
+                }
+            },
+            imagePreview = { EditorImagePreview(uiState = uiState, launcher = launcher) },
+            controls = {
+                EditorControls(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        hapticEnabled = hapticEnabled,
+                        view = view,
+                        context = context
                 )
             },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-    ) { paddingValues ->
-        // Unified Layout: Directly pass launcher to EditorControls which now contains the preview
-        EditorControls(
-                uiState = uiState,
-                viewModel = viewModel,
-                launcher = launcher,
-                modifier = Modifier.padding(paddingValues),
-                hapticEnabled = hapticEnabled
-        )
+            buttons = {
+                BottomButtonsBlock(
+                        targetState = (uiState.original != null) to (uiState.original != null),
+                        onSecondaryButtonClick = { launcher.launch("image/*") },
+                        secondaryButtonIcon = Icons.Default.Add,
+                        secondaryButtonText = "Pick Image",
+                        onPrimaryButtonClick = {
+                            val uri = viewModel.exportImage(context)
+                            if (uri != null) {
+                                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "保存失败", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        primaryButtonIcon = Icons.Default.Save,
+                        primaryButtonText = "Save"
+                )
+            },
+            canShowScreenData = true,
+            showImagePreviewAsStickyHeader = true
+    )
+}
+
+@Composable
+fun EditorImagePreview(
+        uiState: EditorUiState,
+        launcher: ManagedActivityResultLauncher<String, Uri?>,
+        modifier: Modifier = Modifier
+) {
+    Box(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .height(400.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .checkerboardBackground()
+    ) {
+        if (uiState.original == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Button(onClick = { launcher.launch("image/*") }) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("打开图片")
+                }
+            }
+        } else {
+            val original = uiState.original
+            val preview = uiState.preview
+            if (original != null) {
+                ZoomableImage(
+                        original = original,
+                        preview = preview,
+                        modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+        }
     }
 }
 
@@ -125,251 +156,160 @@ fun EditorScreen(
 fun EditorControls(
         uiState: EditorUiState,
         viewModel: EditorViewModel,
-        launcher: ManagedActivityResultLauncher<String, Uri?>,
-        modifier: Modifier = Modifier,
-        hapticEnabled: Boolean = true
+        hapticEnabled: Boolean,
+        view: android.view.View,
+        context: android.content.Context
 ) {
-    val context = LocalContext.current
-    val view = LocalView.current
-
-    LazyColumn(
-            modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // 0. Preview Box (First Item)
-        item {
-            Box(
-                    modifier =
-                            Modifier.fillMaxWidth()
-                                    .height(450.dp) // Fixed height for the preview area
-            ) {
-                if (uiState.original == null) {
-                    Card(
-                            modifier = Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
-                            colors =
-                                    CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surface
-                                    )
-                    ) {
-                        Box(
-                                modifier = Modifier.fillMaxSize().checkerboardBackground(),
-                                contentAlignment = Alignment.Center
-                        ) {
-                            Button(onClick = { launcher.launch("image/*") }) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("打开图片")
-                            }
-                        }
-                    }
-                } else {
-                    Card(
-                            modifier =
-                                    Modifier.fillMaxSize().shadow(8.dp, RoundedCornerShape(16.dp)),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
-                            colors =
-                                    CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surface
-                                    )
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize().checkerboardBackground()) {
-                            val original = uiState.original
-                            val preview = uiState.preview
-                            if (original != null) {
-                                ZoomableImage(
-                                        original = original,
-                                        preview = preview,
-                                        modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                            if (uiState.isLoading) {
-                                CircularProgressIndicator(
-                                        modifier = Modifier.align(Alignment.Center)
-                                )
-                            }
-                        }
-                    }
-                }
+    // 1. Basic Info & Crop
+    TitleItem(text = "基础信息")
+    PreferenceItem(
+            title = "尺寸: ${uiState.original?.width ?: 0} x ${uiState.original?.height ?: 0}",
+            subtitle = "点击裁剪/旋转 (Coming Soon)",
+            icon = Icons.Default.CropRotate,
+            onClick = {
+                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                Toast.makeText(context, "功能开发中 (Coming Soon)", Toast.LENGTH_SHORT).show()
             }
-        }
+    )
 
-        // 1. Basic Info
-        item {
-            ControlGroup(title = "基础信息") {
-                Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                                text =
-                                        "尺寸: ${uiState.original?.width ?: 0} x ${uiState.original?.height ?: 0}",
-                                style = MaterialTheme.typography.bodyMedium
-                        )
+    // 2. Pixelation
+    TitleItem(text = "像素密度 (Block Size)")
+    Card(
+            colors =
+                    CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Pixel Size")
+                Text(text = "${uiState.config.pixelSize}px")
+            }
+            Slider(
+                    value = uiState.config.pixelSize.toFloat(),
+                    onValueChange = { viewModel.updatePixelSize(it.toInt()) },
+                    onValueChangeFinished = {
+                        HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                    },
+                    valueRange = 1f..100f,
+                    steps = 99
+            )
+        }
+    }
+
+    // 3. Palette
+    TitleItem(text = "调色板 (Palette)")
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(listOf(Palette.None, Palette.GameBoy, Palette.NES, Palette.CGA, Palette.BW)) { palette
+            ->
+            PaletteChip(
+                    palette = palette,
+                    selected = uiState.config.palette == palette,
+                    onClick = {
+                        HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                        viewModel.updatePalette(palette)
                     }
-                    OutlinedButton(
+            )
+        }
+    }
+
+    // 4. Advanced
+    TitleItem(text = "高级处理 (Advanced)")
+    Card(
+            colors =
+                    CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("抖动算法 (Dithering)", style = MaterialTheme.typography.labelLarge)
+            LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp)
+            ) {
+                items(DitherType.values()) { type ->
+                    FilterChip(
+                            selected = uiState.config.ditherType == type,
                             onClick = {
                                 HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
-                                Toast.makeText(context, "功能开发中 (Coming Soon)", Toast.LENGTH_SHORT)
-                                        .show()
-                            }
-                    ) {
-                        Icon(Icons.Default.CropRotate, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("裁剪/旋转")
-                    }
-                }
-            }
-        }
-
-        // 2. Pixelation
-        item {
-            ControlGroup(title = "像素密度 (Block Size)") {
-                Column {
-                    Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                    ) { Text("大小: ${uiState.config.pixelSize}px") }
-                    Slider(
-                            value = uiState.config.pixelSize.toFloat(),
-                            onValueChange = { viewModel.updatePixelSize(it.toInt()) },
-                            onValueChangeFinished = {
-                                HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                viewModel.updateDither(type)
                             },
-                            valueRange = 1f..100f,
-                            steps = 99
+                            label = { Text(type.displayName) }
                     )
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                    "对比度 (Contrast): ${String.format("%.1f", uiState.config.contrast)}",
+                    style = MaterialTheme.typography.labelLarge
+            )
+            Slider(
+                    value = uiState.config.contrast,
+                    onValueChange = { viewModel.updateContrast(it) },
+                    onValueChangeFinished = {
+                        HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                    },
+                    valueRange = 0.5f..2.0f
+            )
         }
+    }
 
-        // 3. Palette
-        item {
-            ControlGroup(title = "调色板 (Palette)") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(
-                            listOf(
-                                    Palette.None,
-                                    Palette.GameBoy,
-                                    Palette.NES,
-                                    Palette.CGA,
-                                    Palette.BW
-                            )
-                    ) { palette ->
-                        PaletteChip(
-                                palette = palette,
-                                selected = uiState.config.palette == palette,
-                                onClick = {
-                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
-                                    viewModel.updatePalette(palette)
-                                }
+    // 5. Output
+    TitleItem(text = "输出设置 (Output)")
+    Card(
+            colors =
+                    CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("格式", style = MaterialTheme.typography.labelLarge)
+            Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                val formats =
+                        listOf(
+                                Bitmap.CompressFormat.PNG,
+                                Bitmap.CompressFormat.JPEG,
+                                Bitmap.CompressFormat.WEBP
                         )
-                    }
-                    item {
-                        AssistChip(
-                                onClick = {
-                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
-                                    Toast.makeText(
-                                                    context,
-                                                    "功能开发中 (Coming Soon)",
-                                                    Toast.LENGTH_SHORT
-                                            )
-                                            .show()
-                                },
-                                label = { Icon(Icons.Default.Add, contentDescription = "Add") }
-                        )
-                    }
-                }
-            }
-        }
-
-        // 4. Advanced
-        item {
-            ControlGroup(title = "高级处理 (Advanced)") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("抖动算法 (Dithering)", style = MaterialTheme.typography.bodyMedium)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(DitherType.values()) { type ->
-                            FilterChip(
-                                    selected = uiState.config.ditherType == type,
-                                    onClick = {
-                                        HapticFeedbackManager.performHapticFeedback(
-                                                view,
-                                                hapticEnabled
-                                        )
-                                        viewModel.updateDither(type)
-                                    },
-                                    label = { Text(type.displayName) }
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                            "对比度 (Contrast): ${String.format("%.1f", uiState.config.contrast)}",
-                            style = MaterialTheme.typography.bodyMedium
-                    )
-                    Slider(
-                            value = uiState.config.contrast,
-                            onValueChange = { viewModel.updateContrast(it) },
-                            onValueChangeFinished = {
+                formats.forEach { format ->
+                    FilterChip(
+                            selected = uiState.outputFormat == format,
+                            onClick = {
                                 HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                viewModel.setOutputFormat(format)
                             },
-                            valueRange = 0.5f..2.0f
+                            label = { Text(format.name) }
                     )
                 }
             }
-        }
 
-        // 5. Output
-        item {
-            ExpandableCard(title = "输出设置 (Output)") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Format
-                    Text("格式", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val formats =
-                                listOf(
-                                        Bitmap.CompressFormat.PNG,
-                                        Bitmap.CompressFormat.JPEG,
-                                        Bitmap.CompressFormat.WEBP
-                                )
-                        formats.forEach { format ->
-                            FilterChip(
-                                    selected = uiState.outputFormat == format,
-                                    onClick = {
-                                        HapticFeedbackManager.performHapticFeedback(
-                                                view,
-                                                hapticEnabled
-                                        )
-                                        viewModel.setOutputFormat(format)
-                                    },
-                                    label = { Text(format.name) }
-                            )
+            Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Pixel Perfect Upscale")
+                Switch(
+                        checked = uiState.usePixelPerfectUpscale,
+                        onCheckedChange = {
+                            HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                            viewModel.togglePixelPerfectUpscale(it)
                         }
-                    }
-
-                    // Upscale
-                    Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Pixel Perfect Upscale (防止模糊)")
-                        Switch(
-                                checked = uiState.usePixelPerfectUpscale,
-                                onCheckedChange = {
-                                    HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
-                                    viewModel.togglePixelPerfectUpscale(it)
-                                }
-                        )
-                    }
-                }
+                )
             }
         }
     }
@@ -382,7 +322,6 @@ fun ZoomableImage(original: Bitmap, preview: Bitmap?, modifier: Modifier = Modif
     var offsetY by remember { mutableStateOf(0f) }
     var showOriginal by remember { mutableStateOf(false) }
 
-    // If preview is null logic is handled, but here for safety
     val bitmapToDisplay = if (showOriginal || preview == null) original else preview
 
     Box(
@@ -437,61 +376,6 @@ fun ZoomableImage(original: Bitmap, preview: Bitmap?, modifier: Modifier = Modif
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
             )
-        }
-    }
-}
-
-@Composable
-fun ControlGroup(title: String, content: @Composable () -> Unit) {
-    Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-fun ExpandableCard(title: String, content: @Composable () -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = { expanded = !expanded }
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                )
-                Icon(
-                        imageVector =
-                                if (expanded) Icons.Default.ExpandLess
-                                else Icons.Default.ExpandMore,
-                        contentDescription = null
-                )
-            }
-            AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-            ) { Column(modifier = Modifier.padding(top = 12.dp)) { content() } }
         }
     }
 }
