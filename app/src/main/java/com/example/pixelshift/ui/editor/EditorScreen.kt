@@ -3,6 +3,7 @@ package com.example.pixelshift.ui.editor
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -10,8 +11,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
@@ -98,127 +100,91 @@ fun EditorScreen(navController: NavController, viewModel: EditorViewModel = view
             },
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) { paddingValues ->
-        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            // Preview Area (Weight 1f)
-            Box(
-                    modifier =
-                            Modifier.weight(1f)
-                                    .fillMaxWidth()
-                                    .checkerboardBackground()
-                                    .clip(
-                                            RoundedCornerShape(
-                                                    bottomStart = 24.dp,
-                                                    bottomEnd = 24.dp
-                                            )
-                                    )
-            ) {
-                if (uiState.original == null) {
-                    Button(
-                            onClick = { launcher.launch("image/*") },
-                            modifier = Modifier.align(Alignment.Center)
-                    ) { Text("打开图片") }
-                } else {
-                    val original = uiState.original
-                    val preview = uiState.preview
-                    if (original != null) {
-                        ZoomableImage(
-                                original = original,
-                                preview = preview,
-                                modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
-                }
-            }
-
-            // Controls Area
-            Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    tonalElevation = 8.dp
-            ) { EditorControls(uiState = uiState, viewModel = viewModel) }
-        }
-    }
-}
-
-@Composable
-fun ZoomableImage(original: Bitmap, preview: Bitmap?, modifier: Modifier = Modifier) {
-    var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
-    var showOriginal by remember { mutableStateOf(false) }
-
-    // If preview is null logic is handled, but here for safety
-    val bitmapToDisplay = if (showOriginal || preview == null) original else preview
-
-    // Label for mode
-    val labelText = if (showOriginal) "原图 (Original)" else "预览 (Preview)"
-
-    Box(
-            modifier =
-                    modifier.clip(RoundedCornerShape(0.dp))
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(1f, 10f)
-                                    offsetX += pan.x
-                                    offsetY += pan.y
-                                }
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                        onPress = {
-                                            showOriginal = true
-                                            tryAwaitRelease()
-                                            showOriginal = false
-                                        }
-                                )
-                            }
-    ) {
-        Image(
-                bitmap = bitmapToDisplay.asImageBitmap(),
-                contentDescription = null,
-                modifier =
-                        Modifier.align(Alignment.Center)
-                                .graphicsLayer(
-                                        scaleX = scale,
-                                        scaleY = scale,
-                                        translationX = offsetX,
-                                        translationY = offsetY
-                                )
-                                .shadow(4.dp),
-                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
-                contentScale = ContentScale.Fit
-        )
-
-        Text(
-                text = labelText,
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-                modifier =
-                        Modifier.align(Alignment.TopCenter)
-                                .padding(top = 16.dp)
-                                .background(
-                                        Color.Black.copy(alpha = 0.5f),
-                                        RoundedCornerShape(4.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+        // Unified Layout: Directly pass launcher to EditorControls which now contains the preview
+        EditorControls(
+                uiState = uiState,
+                viewModel = viewModel,
+                launcher = launcher,
+                modifier = Modifier.padding(paddingValues)
         )
     }
 }
 
 @Composable
-fun EditorControls(uiState: EditorUiState, viewModel: EditorViewModel) {
+fun EditorControls(
+        uiState: EditorUiState,
+        viewModel: EditorViewModel,
+        launcher: ManagedActivityResultLauncher<String, Uri?>,
+        modifier: Modifier = Modifier
+) {
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
 
     LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 0. Preview Box (First Item)
+        item {
+            Box(
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .height(450.dp) // Fixed height for the preview area
+            ) {
+                if (uiState.original == null) {
+                    Card(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors =
+                                    CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surface
+                                    )
+                    ) {
+                        Box(
+                                modifier = Modifier.fillMaxSize().checkerboardBackground(),
+                                contentAlignment = Alignment.Center
+                        ) {
+                            Button(onClick = { launcher.launch("image/*") }) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("打开图片")
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                            modifier =
+                                    Modifier.fillMaxSize().shadow(8.dp, RoundedCornerShape(16.dp)),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant),
+                            colors =
+                                    CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surface
+                                    )
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().checkerboardBackground()) {
+                            val original = uiState.original
+                            val preview = uiState.preview
+                            if (original != null) {
+                                ZoomableImage(
+                                        original = original,
+                                        preview = preview,
+                                        modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(
+                                        modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Basic Info
         item {
             ControlGroup(title = "基础信息") {
@@ -234,7 +200,12 @@ fun EditorControls(uiState: EditorUiState, viewModel: EditorViewModel) {
                                 style = MaterialTheme.typography.bodyMedium
                         )
                     }
-                    OutlinedButton(onClick = { /* TODO Crop/Rotate */}) {
+                    OutlinedButton(
+                            onClick = {
+                                Toast.makeText(context, "功能开发中 (Coming Soon)", Toast.LENGTH_SHORT)
+                                        .show()
+                            }
+                    ) {
                         Icon(Icons.Default.CropRotate, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("裁剪/旋转")
@@ -288,7 +259,14 @@ fun EditorControls(uiState: EditorUiState, viewModel: EditorViewModel) {
                     }
                     item {
                         AssistChip(
-                                onClick = { /* TODO Custom Palette */},
+                                onClick = {
+                                    Toast.makeText(
+                                                    context,
+                                                    "功能开发中 (Coming Soon)",
+                                                    Toast.LENGTH_SHORT
+                                            )
+                                            .show()
+                                },
                                 label = { Icon(Icons.Default.Add, contentDescription = "Add") }
                         )
                     }
@@ -367,6 +345,72 @@ fun EditorControls(uiState: EditorUiState, viewModel: EditorViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ZoomableImage(original: Bitmap, preview: Bitmap?, modifier: Modifier = Modifier) {
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
+    var showOriginal by remember { mutableStateOf(false) }
+
+    // If preview is null logic is handled, but here for safety
+    val bitmapToDisplay = if (showOriginal || preview == null) original else preview
+
+    Box(
+            modifier =
+                    modifier.clip(RoundedCornerShape(0.dp))
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    scale = (scale * zoom).coerceIn(1f, 10f)
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                        onPress = {
+                                            showOriginal = true
+                                            tryAwaitRelease()
+                                            showOriginal = false
+                                        }
+                                )
+                            }
+    ) {
+        Image(
+                bitmap = bitmapToDisplay.asImageBitmap(),
+                contentDescription = null,
+                modifier =
+                        Modifier.align(Alignment.Center)
+                                .graphicsLayer(
+                                        scaleX = scale,
+                                        scaleY = scale,
+                                        translationX = offsetX,
+                                        translationY = offsetY
+                                )
+                                .shadow(4.dp),
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.None,
+                contentScale = ContentScale.Fit
+        )
+
+        Surface(
+                color =
+                        if (showOriginal) MaterialTheme.colorScheme.primaryContainer
+                        else Color.Black.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)
+        ) {
+            Text(
+                    text = if (showOriginal) "原图 (Original)" else "按住对比 (Hold to Compare)",
+                    color =
+                            if (showOriginal) MaterialTheme.colorScheme.onPrimaryContainer
+                            else Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
         }
     }
 }
