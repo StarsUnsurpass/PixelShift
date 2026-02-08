@@ -107,17 +107,7 @@ class KotlinImageProcessor : ImageProcessor {
                 resultBitmap
             }
 
-            is Palette.Auto -> {
-                // Use the quantize usage context? 
-                // Wait, getPaletteColors is called from quantize, but it doesn't pass the bitmap or pixels!
-                // I need to change getPaletteColors signature or the call site.
-                // call site: `val paletteColors = getPaletteColors(config.palette)`
-                // It seems I need to pass pixels to it if I want to generate palette from image.
-                IntArray(0) 
-            }
-        }
-    }
-    
+
     private fun getPaletteColors(palette: Palette, pixels: IntArray? = null): IntArray {
         return when (palette) {
             is Palette.None -> IntArray(0)
