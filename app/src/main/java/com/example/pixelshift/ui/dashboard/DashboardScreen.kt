@@ -2,6 +2,7 @@ package com.example.pixelshift.ui.dashboard
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +49,18 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                                                 hapticEnabled
                                         )
                                         navController.navigate(Screen.Editor.route)
+                                }
+                        )
+                        PreferenceItem(
+                                title = "格式转换",
+                                subtitle = "批量转换图片格式 (PNG, JPEG, WEBP)",
+                                icon = androidx.compose.material.icons.Icons.Default.Sync,
+                                onClick = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                        navController.navigate(Screen.FormatConversion.route)
                                 }
                         )
                         // Add more tools here as PreferenceItems

@@ -19,7 +19,24 @@ class KotlinImageProcessor : ImageProcessor {
                             val width = original.width / config.pixelSize
                             val height = original.height / config.pixelSize
                             if (width == 0 || height == 0) return@withContext original
-                            Bitmap.createScaledBitmap(original, width, height, false)
+
+                            // 1. Pre-process: Smoothing (Optional)
+                            val source =
+                                    if (config.smoothImage) {
+                                        applyMedianFilter(original)
+                                    } else {
+                                        original
+                                    }
+
+                            // 2. Downsample: ALWAYS Nearest Neighbor for pixel art look
+                            var processed = Bitmap.createScaledBitmap(source, width, height, false)
+
+                            // 3. Post-process: Edge Enhancement (Optional)
+                            if (config.enhanceEdges) {
+                                processed = applySobelEdgeDetection(processed)
+                            }
+
+                            processed
                         } else {
                             original.copy(Bitmap.Config.ARGB_8888, true)
                         }
@@ -283,5 +300,78 @@ class KotlinImageProcessor : ImageProcessor {
             }
         }
         return nearest
+    }
+
+    private fun applyMedianFilter(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val newPixels = IntArray(width * height)
+
+        // 3x3 Median Filter
+        val window = IntArray(9)
+        for (y in 1 until height - 1) {
+            for (x in 1 until width - 1) {
+                var k = 0
+                for (ky in -1..1) {
+                    for (kx in -1..1) {
+                        window[k++] = pixels[(y + ky) * width + (x + kx)]
+                    }
+                }
+                // Manual Bubble Sort for 9 elements (faster than boxing)
+                for (i in 0 until 9) {
+                    for (j in 0 until 8 - i) {
+                        if (Color.green(window[j]) > Color.green(window[j + 1])) {
+                            val temp = window[j]
+                            window[j] = window[j + 1]
+                            window[j + 1] = temp
+                        }
+                    }
+                }
+                newPixels[y * width + x] = window[4]
+            }
+        }
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        result.setPixels(newPixels, 0, width, 0, 0, width, height)
+        return result
+    }
+
+    private fun applySobelEdgeDetection(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val newPixels = pixels.clone()
+
+        for (y in 1 until height - 1) {
+            for (x in 1 until width - 1) {
+                // Horizontal Gradient (Gx)
+                val p00 = Color.green(pixels[(y - 1) * width + (x - 1)])
+                val p02 = Color.green(pixels[(y - 1) * width + (x + 1)])
+                val p10 = Color.green(pixels[y * width + (x - 1)])
+                val p12 = Color.green(pixels[y * width + (x + 1)])
+                val p20 = Color.green(pixels[(y + 1) * width + (x - 1)])
+                val p22 = Color.green(pixels[(y + 1) * width + (x + 1)])
+
+                val gx = (p02 + 2 * p12 + p22) - (p00 + 2 * p10 + p20)
+
+                // Vertical Gradient (Gy)
+                val p01 = Color.green(pixels[(y - 1) * width + x])
+                val p21 = Color.green(pixels[(y + 1) * width + x])
+
+                val gy = (p20 + 2 * p21 + p22) - (p00 + 2 * p01 + p02)
+
+                val magnitude = Math.sqrt((gx * gx + gy * gy).toDouble()).toInt()
+
+                // Threshold for edge
+                if (magnitude > 128) {
+                    newPixels[y * width + x] = Color.BLACK
+                }
+            }
+        }
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        result.setPixels(newPixels, 0, width, 0, 0, width, height)
+        return result
     }
 }

@@ -17,6 +17,12 @@ fun Navigation(themeViewModel: ThemeViewModel) {
         composable(Screen.Editor.route) {
             EditorScreen(navController = navController, themeViewModel = themeViewModel)
         }
+        composable(Screen.FormatConversion.route) {
+            com.example.pixelshift.ui.format.FormatConversionScreen(
+                    navController = navController,
+                    themeViewModel = themeViewModel
+            )
+        }
         composable(Screen.Settings.route) {
             // Assume ThemeViewModel is available via Hilt or passed down, but here we passed it to
             // Dashboard

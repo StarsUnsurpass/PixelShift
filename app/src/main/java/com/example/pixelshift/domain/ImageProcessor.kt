@@ -11,7 +11,9 @@ data class ProcessingConfig(
         val contrast: Float = 1.0f,
         val saturation: Float = 1.0f,
         val ditherType: DitherType = DitherType.None,
-        val palette: Palette = Palette.None
+        val palette: Palette = Palette.None,
+        val smoothImage: Boolean = false,
+        val enhanceEdges: Boolean = false
 )
 
 enum class DitherType(val displayName: String) {

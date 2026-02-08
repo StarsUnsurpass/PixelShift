@@ -98,6 +98,14 @@ class EditorViewModel : ViewModel() {
         updateConfig(_uiState.value.config.copy(ditherType = ditherType))
     }
 
+    fun toggleSmoothImage(enabled: Boolean) {
+        updateConfig(_uiState.value.config.copy(smoothImage = enabled))
+    }
+
+    fun toggleEnhanceEdges(enabled: Boolean) {
+        updateConfig(_uiState.value.config.copy(enhanceEdges = enabled))
+    }
+
     fun updateContrast(contrast: Float) {
         updateConfig(_uiState.value.config.copy(contrast = contrast))
     }
