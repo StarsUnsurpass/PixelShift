@@ -2,6 +2,15 @@
 
 本项目的所有重大更改将记录在此处。
 
+## [1.2] - 2026-02-08
+
+### ✨ 新增 (Added)
+- **Pixel Art Pipeline (三步处理流水线)**:
+    - **Smart Smoothing**: 集成桑原滤波器 (Kuwahara Filter)，实现“油画/卡通”风格平滑，减少噪点。
+    - **Grid-based Downsampling**: 严格使用最近邻插值 (Nearest Neighbor) 进行像素化，保证边缘清晰。
+    - **Color Quantization**: 集成 K-Means 聚类算法，支持“自动”调色板生成。
+- **UI 实时进度**: 编辑器界面现在分步显示处理过程 (平滑 -> 像素化 -> 量化)。
+
 ## [1.1] - 2026-02-08
 
 ### ✨ 新增 (Added)
