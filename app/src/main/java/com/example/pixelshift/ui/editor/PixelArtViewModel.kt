@@ -46,10 +46,27 @@ class PixelArtViewModel : ViewModel() {
     private val _currentColor = MutableStateFlow(Color.Black)
     val currentColor: StateFlow<Color> = _currentColor.asStateFlow()
 
+    private val _secondaryColor = MutableStateFlow(Color.White) // Background/Secondary color
+    val secondaryColor: StateFlow<Color> = _secondaryColor.asStateFlow()
+
     // Undo/Redo Stacks (Simplified for now - storing full bitmaps)
     // In a real app, we'd store diffs or commands to save memory.
     private val undoStack = Stack<List<PixelLayer>>()
     private val redoStack = Stack<List<PixelLayer>>()
+
+    // Pixel Perfect Tracking
+    private data class PixelNode(val x: Int, val y: Int, val oldColor: Int)
+    private val currentStrokePath = java.util.LinkedList<PixelNode>()
+
+    // Magnifier State
+    data class MagnifierState(
+            val visible: Boolean = false,
+            val x: Int = 0,
+            val y: Int = 0, // Pixel coordinates
+            val targetColor: Color = Color.Transparent
+    )
+    private val _magnifierState = MutableStateFlow(MagnifierState())
+    val magnifierState: StateFlow<MagnifierState> = _magnifierState.asStateFlow()
 
     private var lastX: Int? = null
     private var lastY: Int? = null
@@ -90,6 +107,30 @@ class PixelArtViewModel : ViewModel() {
         _currentColor.value = color
     }
 
+    fun setSecondaryColor(color: Color) {
+        _secondaryColor.value = color
+    }
+
+    fun toggleEraseToBackground(enabled: Boolean) {
+        _toolSettings.update { it.copy(eraseToBackground = enabled) }
+    }
+
+    fun toggleSampleAllLayers(enabled: Boolean) {
+        _toolSettings.update { it.copy(sampleAllLayers = enabled) }
+    }
+
+    fun toggleContiguous(enabled: Boolean) {
+        _toolSettings.update { it.copy(contiguous = enabled) }
+    }
+
+    fun toggleShapeFilled(enabled: Boolean) {
+        _toolSettings.update { it.copy(shapeFilled = enabled) }
+    }
+
+    fun togglePixelPerfect(enabled: Boolean) {
+        _toolSettings.update { it.copy(pixelPerfect = enabled) }
+    }
+
     fun setToolSize(size: Int) {
         _toolSettings.update { it.copy(size = size) }
     }
@@ -114,58 +155,59 @@ class PixelArtViewModel : ViewModel() {
 
         when (tool) {
             Tool.PENCIL -> {
-                if (lastX != null && lastY != null && isDrag) {
-                    DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
-                        if (px in 0 until state.width && py in 0 until state.height) {
-                            bitmap.setPixel(px, py, color)
-                        }
-                    }
-                } else {
-                    DrawingAlgorithms.drawLine(x, y, x, y, size) { px, py ->
-                        if (px in 0 until state.width && py in 0 until state.height) {
-                            bitmap.setPixel(px, py, color)
-                        }
-                    }
-                }
+                val colorToUse = _currentColor.value.toArgb()
+                drawStroke(x, y, colorToUse, size, isDrag, state, bitmap)
                 lastX = x
                 lastY = y
             }
             Tool.ERASER -> {
-                if (lastX != null && lastY != null && isDrag) {
-                    DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
-                        if (px in 0 until state.width && py in 0 until state.height) {
-                            bitmap.setPixel(px, py, Color.Transparent.toArgb())
+                val colorToUse =
+                        if (_toolSettings.value.eraseToBackground) {
+                            _secondaryColor.value.toArgb()
+                        } else {
+                            Color.Transparent.toArgb()
                         }
-                    }
-                } else {
-                    DrawingAlgorithms.drawLine(x, y, x, y, size) { px, py ->
-                        if (px in 0 until state.width && py in 0 until state.height) {
-                            bitmap.setPixel(px, py, Color.Transparent.toArgb())
-                        }
-                    }
-                }
+                drawStroke(x, y, colorToUse, size, isDrag, state, bitmap)
                 lastX = x
                 lastY = y
             }
             Tool.FILL -> {
                 if (!isDrag) {
-                    DrawingAlgorithms.floodFill(bitmap, x, y, bitmap.getPixel(x, y), color)
+                    val targetPixel = bitmap.getPixel(x, y)
+                    if (_toolSettings.value.contiguous) {
+                        DrawingAlgorithms.scanlineFloodFill(bitmap, x, y, targetPixel, color)
+                    } else {
+                        DrawingAlgorithms.globalReplace(bitmap, targetPixel, color)
+                    }
                 }
             }
             Tool.EYEDROPPER -> {
-                if (!isDrag) {
-                    val pixelColor = bitmap.getPixel(x, y)
-                    _currentColor.value = Color(pixelColor)
-                    _currentTool.value = Tool.PENCIL // Auto switch back
+                val pixelColorInt = getPixelColor(x, y, state)
+                val pixelColor = Color(pixelColorInt)
+
+                if (isDrag) {
+                    _magnifierState.value =
+                            MagnifierState(visible = true, x = x, y = y, targetColor = pixelColor)
+                } else {
+                    if (!isActionEnd) {
+                        _currentColor.value = pixelColor
+                        _currentTool.value = Tool.PENCIL
+                    }
+                }
+
+                if (isActionEnd) {
+                    if (isDrag) {
+                        _currentColor.value = pixelColor
+                        _currentTool.value = Tool.PENCIL
+                    }
+                    _magnifierState.value = _magnifierState.value.copy(visible = false)
                 }
             }
-            Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE -> {
-                // Initialize Preview Layer if needed
+            Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> {
+                // Initialize Preview Layer
                 if (isDrag && lastX == null) {
-                    // Start of drag
                     lastX = x
                     lastY = y
-                    // Create/Reset Preview Layer
                     val previewBitmap =
                             Bitmap.createBitmap(state.width, state.height, Bitmap.Config.ARGB_8888)
                     val previewLayer =
@@ -174,7 +216,6 @@ class PixelArtViewModel : ViewModel() {
                 }
 
                 if (isDrag && lastX != null) {
-                    // Draw on preview layer
                     _projectState.value?.previewLayer?.bitmap?.eraseColor(
                             Color.Transparent.toArgb()
                     )
@@ -183,9 +224,8 @@ class PixelArtViewModel : ViewModel() {
                     when (tool) {
                         Tool.SHAPE_LINE ->
                                 DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
-                                    if (px in 0 until state.width && py in 0 until state.height) {
-                                        previewBitmap.setPixel(px, py, color)
-                                    }
+                                    if (px in 0 until state.width && py in 0 until state.height)
+                                            previewBitmap.setPixel(px, py, color)
                                 }
                         Tool.SHAPE_RECTANGLE ->
                                 DrawingAlgorithms.drawRectangle(
@@ -196,9 +236,8 @@ class PixelArtViewModel : ViewModel() {
                                         size,
                                         _toolSettings.value.shapeFilled
                                 ) { px, py ->
-                                    if (px in 0 until state.width && py in 0 until state.height) {
-                                        previewBitmap.setPixel(px, py, color)
-                                    }
+                                    if (px in 0 until state.width && py in 0 until state.height)
+                                            previewBitmap.setPixel(px, py, color)
                                 }
                         Tool.SHAPE_CIRCLE ->
                                 DrawingAlgorithms.drawCircle(
@@ -209,75 +248,86 @@ class PixelArtViewModel : ViewModel() {
                                         size,
                                         _toolSettings.value.shapeFilled
                                 ) { px, py ->
-                                    if (px in 0 until state.width && py in 0 until state.height) {
-                                        previewBitmap.setPixel(px, py, color)
-                                    }
+                                    if (px in 0 until state.width && py in 0 until state.height)
+                                            previewBitmap.setPixel(px, py, color)
+                                }
+                        Tool.SELECTION_RECTANGLE ->
+                                DrawingAlgorithms.drawRectangle(lastX!!, lastY!!, x, y, 1, false) {
+                                        px,
+                                        py ->
+                                    if (px in 0 until state.width && py in 0 until state.height)
+                                            previewBitmap.setPixel(px, py, Color.Gray.toArgb())
                                 }
                         else -> {}
                     }
-                    // Force update to show preview
                     _projectState.update { it }
-                }
-
-                if (isActionEnd && lastX != null) {
-                    // Commit to active layer
-                    val previewBitmap = _projectState.value?.previewLayer?.bitmap
-                    if (previewBitmap != null) {
-                        // Draw preview bitmap onto active layer
-                        // We can iterate pixels or use Canvas
-                        // Iterating is safer for "aliased" requirement if we just copy
-                        // non-transparent pixels
-                        // But DrawBitmap should work if logic is correct.
-                        // Let's reuse the algos to draw directly on active layer to be safe and
-                        // consistent
-
-                        when (tool) {
-                            Tool.SHAPE_LINE ->
-                                    DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) {
-                                            px,
-                                            py ->
-                                        if (px in 0 until state.width && py in 0 until state.height
-                                        ) {
-                                            bitmap.setPixel(px, py, color)
-                                        }
-                                    }
-                            Tool.SHAPE_RECTANGLE ->
-                                    DrawingAlgorithms.drawRectangle(
-                                            lastX!!,
-                                            lastY!!,
-                                            x,
-                                            y,
-                                            size,
-                                            _toolSettings.value.shapeFilled
-                                    ) { px, py ->
-                                        if (px in 0 until state.width && py in 0 until state.height
-                                        ) {
-                                            bitmap.setPixel(px, py, color)
-                                        }
-                                    }
-                            Tool.SHAPE_CIRCLE ->
-                                    DrawingAlgorithms.drawCircle(
-                                            lastX!!,
-                                            lastY!!,
-                                            x,
-                                            y,
-                                            size,
-                                            _toolSettings.value.shapeFilled
-                                    ) { px, py ->
-                                        if (px in 0 until state.width && py in 0 until state.height
-                                        ) {
-                                            bitmap.setPixel(px, py, color)
-                                        }
-                                    }
-                            else -> {}
-                        }
-                    }
-
-                    // Clear preview layer
-                    _projectState.update { it?.copy(previewLayer = null) }
                 }
             }
             else -> {}
+        }
+
+        if (isActionEnd && lastX != null) {
+            when (tool) {
+                Tool.SHAPE_LINE ->
+                        DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
+                            if (px in 0 until state.width && py in 0 until state.height)
+                                    bitmap.setPixel(px, py, color)
+                        }
+                Tool.SHAPE_RECTANGLE ->
+                        DrawingAlgorithms.drawRectangle(
+                                lastX!!,
+                                lastY!!,
+                                x,
+                                y,
+                                size,
+                                _toolSettings.value.shapeFilled
+                        ) { px, py ->
+                            if (px in 0 until state.width && py in 0 until state.height)
+                                    bitmap.setPixel(px, py, color)
+                        }
+                Tool.SHAPE_CIRCLE ->
+                        DrawingAlgorithms.drawCircle(
+                                lastX!!,
+                                lastY!!,
+                                x,
+                                y,
+                                size,
+                                _toolSettings.value.shapeFilled
+                        ) { px, py ->
+                            if (px in 0 until state.width && py in 0 until state.height)
+                                    bitmap.setPixel(px, py, color)
+                        }
+                Tool.SELECTION_RECTANGLE -> {
+                    val left = minOf(lastX!!, x)
+                    val right = maxOf(lastX!!, x)
+                    val top = minOf(lastY!!, y)
+                    val bottom = maxOf(lastY!!, y)
+                    _projectState.update { it?.copy(previewLayer = null) }
+                    createRectSelection(android.graphics.Rect(left, top, right + 1, bottom + 1))
+                }
+                Tool.SELECTION_MAGIC_WAND -> {
+                    createMagicWandSelection(x, y)
+                }
+                else -> {}
+            }
+
+            if (tool == Tool.SHAPE_LINE ||
+                            tool == Tool.SHAPE_RECTANGLE ||
+                            tool == Tool.SHAPE_CIRCLE ||
+                            tool == Tool.SELECTION_RECTANGLE
+            ) {
+                _projectState.update { it?.copy(previewLayer = null) }
+            }
+        }
+
+        if (tool == Tool.MOVE && isActionEnd) {
+            lastX = null
+            lastY = null
+        }
+
+        if (tool == Tool.SELECTION_MAGIC_WAND && isActionEnd && lastX == null) {
+            commitSelection()
+            createMagicWandSelection(x, y)
         }
 
         if (isActionEnd) {
@@ -286,7 +336,6 @@ class PixelArtViewModel : ViewModel() {
             saveState()
         }
 
-        // Trigger recomposition
         _projectState.update { it?.copy(layers = it.layers.toList()) }
     }
 
@@ -415,5 +464,184 @@ class PixelArtViewModel : ViewModel() {
         }
 
         return destBitmap
+    }
+    private fun drawStroke(
+            x: Int,
+            y: Int,
+            color: Int,
+            size: Int,
+            isDrag: Boolean,
+            state: ProjectState,
+            bitmap: Bitmap
+    ) {
+        // Prepare plot function
+        val plotPixel: (Int, Int) -> Unit = { px, py ->
+            if (px in 0 until state.width && py in 0 until state.height) {
+                val originalColor = bitmap.getPixel(px, py)
+                bitmap.setPixel(px, py, color)
+
+                // Pixel Perfect Logic (Only for 1px brush)
+                if (_toolSettings.value.pixelPerfect && size == 1) {
+                    currentStrokePath.add(PixelNode(px, py, originalColor))
+
+                    // Check for L-shape
+                    if (currentStrokePath.size >= 3) {
+                        val c = currentStrokePath.last // Current
+                        val b = currentStrokePath[currentStrokePath.size - 2] // Middle
+                        val a = currentStrokePath[currentStrokePath.size - 3] // Previous
+
+                        // Check if A and C are diagonal neighbors
+                        if (kotlin.math.abs(a.x - c.x) == 1 && kotlin.math.abs(a.y - c.y) == 1) {
+                            // Check if B creates an L-shape (shared coord with A and C)
+                            if ((b.x == a.x && b.y == c.y) || (b.x == c.x && b.y == a.y)) {
+                                // Restore B
+                                bitmap.setPixel(b.x, b.y, b.oldColor)
+                                currentStrokePath.removeAt(currentStrokePath.size - 2)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (lastX != null && lastY != null && isDrag) {
+            DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size, plotPixel)
+        } else {
+            // Reset path on new stroke (ACTION_DOWN or single tap)
+            if (!isDrag) currentStrokePath.clear()
+            DrawingAlgorithms.drawLine(x, y, x, y, size, plotPixel)
+        }
+    }
+
+    private fun getPixelColor(x: Int, y: Int, state: ProjectState): Int {
+        if (x !in 0 until state.width || y !in 0 until state.height)
+                return Color.Transparent.toArgb()
+
+        return if (_toolSettings.value.sampleAllLayers) {
+            // Iterate layers from bottom to top for blending
+            var r = 0f
+            var g = 0f
+            var b = 0f
+            var a = 0f
+
+            // Start with background
+            if (state.backgroundColor != Color.Transparent) {
+                val bg = state.backgroundColor
+                r = bg.red
+                g = bg.green
+                b = bg.blue
+                a = bg.alpha
+            }
+
+            // Blend layers
+            state.layers.asReversed().forEach { layer ->
+                if (layer.isVisible) {
+                    val pixel = layer.bitmap.getPixel(x, y)
+                    val color = Color(pixel)
+                    if (color.alpha > 0f) {
+                        val srcA = color.alpha
+                        val dstA = a
+                        val outA = srcA + dstA * (1f - srcA)
+
+                        if (outA > 0f) {
+                            r = (color.red * srcA + r * dstA * (1f - srcA)) / outA
+                            g = (color.green * srcA + g * dstA * (1f - srcA)) / outA
+                            b = (color.blue * srcA + b * dstA * (1f - srcA)) / outA
+                            a = outA
+                        }
+                    }
+                }
+            }
+            Color(r, g, b, a).toArgb()
+        } else {
+            // Current Layer Only
+            val activeLayer = state.layers.find { it.id == state.activeLayerId }
+            activeLayer?.bitmap?.getPixel(x, y) ?: Color.Transparent.toArgb()
+        }
+    }
+
+    // --- Selection Helper Methods ---
+
+    private fun createRectSelection(rect: android.graphics.Rect) {
+        val state = _projectState.value ?: return
+        val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
+
+        val mask = DrawingAlgorithms.createRectMask(state.width, state.height, rect)
+        val result = DrawingAlgorithms.extractSelection(activeLayer.bitmap, mask)
+
+        if (result != null) {
+            val (floatingBitmap, bounds) = result
+            val selection =
+                    com.example.pixelshift.ui.editor.common.SelectionState(
+                            bitmap = floatingBitmap,
+                            mask = mask,
+                            x = bounds.left,
+                            y = bounds.top
+                    )
+            _projectState.update { it?.copy(selection = selection) }
+        }
+    }
+
+    private fun createMagicWandSelection(x: Int, y: Int) {
+        val state = _projectState.value ?: return
+        val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
+
+        val mask = DrawingAlgorithms.createMagicWandMask(activeLayer.bitmap, x, y)
+        val result = DrawingAlgorithms.extractSelection(activeLayer.bitmap, mask)
+
+        if (result != null) {
+            val (floatingBitmap, bounds) = result
+            val selection =
+                    com.example.pixelshift.ui.editor.common.SelectionState(
+                            bitmap = floatingBitmap,
+                            mask = mask,
+                            x = bounds.left,
+                            y = bounds.top
+                    )
+            _projectState.update { it?.copy(selection = selection) }
+        }
+    }
+
+    fun commitSelection() {
+        val state = _projectState.value ?: return
+        val selection = state.selection ?: return
+        val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
+
+        DrawingAlgorithms.mergeSelection(
+                activeLayer.bitmap,
+                selection.bitmap,
+                selection.x,
+                selection.y
+        )
+
+        _projectState.update { it?.copy(selection = null) }
+    }
+
+    fun moveSelection(dx: Int, dy: Int) {
+        val state = _projectState.value ?: return
+        val selection = state.selection ?: return
+
+        val newSelection = selection.copy(x = selection.x + dx, y = selection.y + dy)
+        _projectState.update { it?.copy(selection = newSelection) }
+    }
+
+    fun rotateSelection() {
+        val state = _projectState.value ?: return
+        val selection = state.selection ?: return
+
+        val newBitmap = DrawingAlgorithms.rotateBitmap90(selection.bitmap)
+        _projectState.update { it?.copy(selection = selection.copy(bitmap = newBitmap)) }
+    }
+
+    fun flipSelection(horizontal: Boolean) {
+        val state = _projectState.value ?: return
+        val selection = state.selection ?: return
+
+        val newBitmap = DrawingAlgorithms.flipBitmap(selection.bitmap, horizontal)
+        _projectState.update { it?.copy(selection = selection.copy(bitmap = newBitmap)) }
+    }
+
+    fun clearSelection() {
+        commitSelection()
     }
 }

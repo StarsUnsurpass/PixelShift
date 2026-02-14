@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,10 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.pixelshift.ui.editor.components.EditorBottomBar
 import com.example.pixelshift.ui.editor.components.LayerManagerSheet
+import com.example.pixelshift.ui.editor.components.Magnifier
 import com.example.pixelshift.ui.editor.components.PixelCanvas
 import com.example.pixelshift.ui.theme.ThemeViewModel
 
@@ -48,9 +51,12 @@ fun PixelArtEditorScreen(
 ) {
     val projectState by viewModel.projectState.collectAsState()
     val currentTool by viewModel.currentTool.collectAsState()
+
     val currentColor by viewModel.currentColor.collectAsState() // Added observation
+    val magnifierState by viewModel.magnifierState.collectAsState()
 
     var showLayerSheet by remember { mutableStateOf(false) }
+    var showToolSettingsSheet by remember { mutableStateOf(false) }
     var showColorPickerSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -58,8 +64,7 @@ fun PixelArtEditorScreen(
 
     LaunchedEffect(Unit) {
         if (projectState == null) {
-            val bgColor =
-                    if (isTransparentBackground) Color.Transparent else Color(backgroundColor)
+            val bgColor = if (isTransparentBackground) Color.Transparent else Color(backgroundColor)
             viewModel.initializeProject(width, height, bgColor)
         }
     }
@@ -79,6 +84,12 @@ fun PixelArtEditorScreen(
                             }
                             IconButton(onClick = { viewModel.redo() }) {
                                 Icon(Icons.Default.Redo, contentDescription = "Redo")
+                            }
+                            IconButton(onClick = { viewModel.redo() }) {
+                                Icon(Icons.Default.Redo, contentDescription = "Redo")
+                            }
+                            IconButton(onClick = { showToolSettingsSheet = true }) {
+                                Icon(Icons.Default.Tune, contentDescription = "Tool Settings")
                             }
                             IconButton(onClick = { showLayerSheet = true }) {
                                 Icon(Icons.Default.Layers, contentDescription = "Layers")
@@ -111,6 +122,11 @@ fun PixelArtEditorScreen(
                             viewModel.onPixelAction(0, 0, isDrag = true, isActionEnd = true)
                         }
                 )
+
+                // Magnifier Overlay
+                Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
+                    Magnifier(magnifierState = magnifierState, projectState = projectState!!)
+                }
             } else {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
@@ -132,6 +148,31 @@ fun PixelArtEditorScreen(
                         onAddLayer = { viewModel.addLayer() },
                         onDeleteLayer = { viewModel.removeLayer(it) },
                         onClose = { showLayerSheet = false }
+                )
+            }
+        }
+
+        if (showToolSettingsSheet) {
+            ModalBottomSheet(
+                    onDismissRequest = { showToolSettingsSheet = false },
+                    sheetState = sheetState
+            ) {
+                com.example.pixelshift.ui.editor.components.ToolSettingsSheet(
+                        settings = viewModel.toolSettings.collectAsState().value,
+                        onSizeChange = { viewModel.setToolSize(it) },
+                        onPixelPerfectChange = { viewModel.togglePixelPerfect(it) },
+                        onEraseToBackgroundChange = { viewModel.toggleEraseToBackground(it) },
+                        secondaryColor = viewModel.secondaryColor.collectAsState().value,
+                        onSecondaryColorChange = { viewModel.setSecondaryColor(it) },
+                        onSampleAllLayersChange = { viewModel.toggleSampleAllLayers(it) },
+                        onContiguousChange = { viewModel.toggleContiguous(it) },
+                        onShapeFilledChange = { viewModel.toggleShapeFilled(it) },
+                        hasSelection = projectState?.selection != null,
+                        onRotateSelection = { viewModel.rotateSelection() },
+                        onFlipHorizontal = { viewModel.flipSelection(true) },
+                        onFlipVertical = { viewModel.flipSelection(false) },
+                        onClearSelection = { viewModel.clearSelection() },
+                        onClose = { showToolSettingsSheet = false }
                 )
             }
         }
