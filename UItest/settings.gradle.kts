@@ -114,6 +114,8 @@ include(":feature:library-details")
 include(":feature:wallpapers-export")
 include(":feature:ascii-art")
 include(":feature:ai-tools")
+include(":feature:bitmap-editor")
+include(":feature:pixel-art")
 
 include(":feature:root")
 

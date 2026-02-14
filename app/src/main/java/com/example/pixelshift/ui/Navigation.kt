@@ -8,31 +8,11 @@ import com.example.pixelshift.ui.dashboard.DashboardScreen
 import com.example.pixelshift.ui.editor.EditorScreen
 import com.example.pixelshift.ui.settings.SettingsScreen
 import com.example.pixelshift.ui.theme.ThemeViewModel
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.example.pixelshift.ui.editor.PixelArtEditorScreen
 
 @Composable
 fun Navigation(themeViewModel: ThemeViewModel) {
-    val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Screen.Dashboard.route) {
-        composable(Screen.Dashboard.route) { DashboardScreen(navController, themeViewModel) }
-        composable(Screen.Editor.route) {
-            EditorScreen(navController = navController, themeViewModel = themeViewModel)
-        }
-        composable(Screen.FormatConversion.route) {
-            com.example.pixelshift.ui.format.FormatConversionScreen(
-                    navController = navController,
-                    themeViewModel = themeViewModel
-            )
-        }
-        composable(Screen.Settings.route) {
-            // Assume ThemeViewModel is available via Hilt or passed down, but here we passed it to
-            // Dashboard
-            // In Navigation, we receive it, so we can pass it to SettingsScreen too.
-            // However, SettingsScreen uses viewModel() by default, dealing with its own instance if
-            // not passed.
-            // But since we want to share the same instance (scoped to Activity or NavGraph), we
-            // should pass the one we received.
-            // We need to import SettingsScreen.
-            SettingsScreen(navController = navController, themeViewModel = themeViewModel)
-        }
-    }
+    MainScreen(themeViewModel = themeViewModel)
 }

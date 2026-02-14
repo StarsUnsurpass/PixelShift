@@ -307,6 +307,9 @@
     <string name="auto_cache_clearing">Auto cache clearing</string>
     <string name="auto_cache_clearing_sub">If enabled app cache will be cleared on app startup</string>
     <string name="create">Create</string>
+    <string name="creation">Creation</string>
+    <string name="bitmap_editor">Bitmap Editor</string>
+    <string name="bitmap_editor_sub">Create and edit pixel-perfect images with a powerful set of tools</string>
     <string name="tools">Tools</string>
     <string name="group_options_by_type">Group options by type</string>
     <string name="group_options_by_type_sub">Groups options on the main screen by their type instead of a custom list arrangement</string>
@@ -2062,4 +2065,6 @@
     <string name="downloading">Downloading</string>
     <string name="smooth_shapes">Smooth Shapes</string>
     <string name="smooth_shapes_sub">Use superellipses instead of standard rounded rectangles for smoother, more natural shapes</string>
+    <string name="bitmap_editor">Bitmap Editor</string>
+    <string name="bitmap_editor_sub">Create a bitmap from scratch, with a help of layers and pixel-perfect tools</string>
 </resources>

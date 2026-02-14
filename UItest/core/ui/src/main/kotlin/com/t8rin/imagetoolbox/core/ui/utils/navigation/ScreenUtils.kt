@@ -193,6 +193,7 @@ internal fun Screen.simpleName(): String = when (this) {
     is WallpapersExport -> "Wallpapers_Export"
     is AsciiArt -> "Ascii_Art"
     is AiTools -> "Ai_Tools"
+    is BitmapEditor -> "Bitmap_Editor"
 }
 
 internal fun Screen.icon(): ImageVector? = when (this) {
@@ -246,6 +247,7 @@ internal fun Screen.icon(): ImageVector? = when (this) {
     is WallpapersExport -> Icons.Outlined.WallpaperAlt
     is AsciiArt -> Icons.Outlined.Ascii
     is AiTools -> Icons.Outlined.Neurology
+    is BitmapEditor -> Icons.Rounded.Brush
 }
 
 internal fun Screen.twoToneIcon(): ImageVector? = when (this) {
@@ -299,6 +301,7 @@ internal fun Screen.twoToneIcon(): ImageVector? = when (this) {
     is WallpapersExport -> Icons.Outlined.WallpaperAlt
     is AsciiArt -> Icons.Outlined.Ascii
     is AiTools -> Icons.TwoTone.Neurology
+    is BitmapEditor -> Icons.Rounded.Brush
 }
 
 internal object UriSerializer : KSerializer<AndroidUri> {
@@ -344,6 +347,14 @@ private object ScreenConstantsImpl : ScreenConstants {
                 title = R.string.edit,
                 selectedIcon = Icons.Rounded.MiniEditLarge,
                 baseIcon = Icons.Outlined.MiniEditLarge
+            ),
+            ScreenGroup(
+                entries = listOf(
+                    BitmapEditor(),
+                ),
+                title = R.string.creation,
+                selectedIcon = Icons.Rounded.Brush,
+                baseIcon = Icons.Outlined.Brush
             ),
             ScreenGroup(
                 entries = listOf(

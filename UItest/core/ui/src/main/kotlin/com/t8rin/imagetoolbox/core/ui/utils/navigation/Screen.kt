@@ -823,6 +823,15 @@ sealed class Screen(
         subtitle = R.string.ai_tools_sub
     )
 
+    @Serializable
+    data class BitmapEditor(
+        val uri: Uri? = null
+    ) : Screen(
+        id = 43,
+        title = R.string.bitmap_editor,
+        subtitle = R.string.bitmap_editor_sub
+    )
+
     companion object : ScreenConstants by ScreenConstants
 }
 

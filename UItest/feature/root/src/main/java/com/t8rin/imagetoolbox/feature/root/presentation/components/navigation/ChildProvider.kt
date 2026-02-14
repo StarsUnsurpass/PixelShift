@@ -170,6 +170,7 @@ internal class ChildProvider @Inject constructor(
     private val wallpapersExportComponentFactory: WallpapersExportComponent.Factory,
     private val asciiArtComponentFactory: AsciiArtComponent.Factory,
     private val aiToolsComponentFactory: AiToolsComponent.Factory,
+    private val bitmapEditorComponentFactory: BitmapEditorComponent.Factory,
 ) {
     fun RootComponent.createChild(
         config: Screen,
@@ -602,6 +603,12 @@ internal class ChildProvider @Inject constructor(
                 initialUris = config.uris,
                 onGoBack = ::navigateBack,
                 onNavigate = ::navigateTo
+            )
+        )
+
+        is Screen.BitmapEditor -> NavigationChild.BitmapEditor(
+            bitmapEditorComponentFactory(
+                componentContext = componentContext
             )
         )
     }
