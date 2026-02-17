@@ -88,8 +88,7 @@ fun PixelCanvas(
                             val offsetX = viewportState.offsetX
                             val offsetY = viewportState.offsetY
                             
-                            val pixelX = floor((offset.x - offsetX) / scale).toInt()
-                            val pixelY = floor((offset.y - offsetY) / scale).toInt()
+                            val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
 
                             if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
                                 onTap(pixelX, pixelY)
@@ -103,8 +102,7 @@ fun PixelCanvas(
                                 val offsetX = viewportState.offsetX
                                 val offsetY = viewportState.offsetY
                                 
-                                val pixelX = floor((offset.x - offsetX) / scale).toInt()
-                                val pixelY = floor((offset.y - offsetY) / scale).toInt()
+                                val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
                                 onDragStart(pixelX, pixelY)
                             },
                             onDrag = { change, _ ->
@@ -112,8 +110,7 @@ fun PixelCanvas(
                                 val offsetX = viewportState.offsetX
                                 val offsetY = viewportState.offsetY
                                 
-                                val pixelX = floor((change.position.x - offsetX) / scale).toInt()
-                                val pixelY = floor((change.position.y - offsetY) / scale).toInt()
+                                val (pixelX, pixelY) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
                                 onDrag(pixelX, pixelY)
                             },
                             onDragEnd = { onDragEnd() }
@@ -157,40 +154,32 @@ fun PixelCanvas(
 
                 projectState.layers.asReversed().forEach { layer ->
                     if (layer.isVisible) {
-                        // Update opacity/alpha for this layer
                         paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-
                         val bitmap = layer.bitmap as android.graphics.Bitmap
-                        // We still create Rects here, could be optimized further but Paint was the big one
-                        val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
-                        val dst = android.graphics.RectF(
-                            offsetX,
-                            offsetY,
-                            offsetX + projectWidth * scale,
-                            offsetY + projectHeight * scale
-                        )
-                        drawBitmap(bitmap, src, dst, paint)
+                        
+                        // Professional Secret: Use a single Matrix for the entire canvas draw
+                        // rather than per-bitmap Rect calculations if possible.
+                        // For now, we use the matrix to ensure zero-drift consistency.
+                        val matrix = viewportState.getMatrix()
+                        drawBitmap(bitmap, matrix, paint)
                     }
                 }
             }
             
              // 2.5 Draw Floating Selection
             projectState.selection?.let { selection ->
-                 with(drawContext.canvas.nativeCanvas) {
-                     val paint = android.graphics.Paint().apply {
-                         isAntiAlias = false
-                         isFilterBitmap = false
-                     }
+                  with(drawContext.canvas.nativeCanvas) {
+                      val paint = android.graphics.Paint().apply {
+                          isAntiAlias = false
+                          isFilterBitmap = false
+                          isDither = false
+                      }
                       val bitmap = selection.bitmap as android.graphics.Bitmap
-                      val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
-                      val dst = android.graphics.RectF(
-                          offsetX + selection.x * scale,
-                          offsetY + selection.y * scale,
-                          offsetX + (selection.x + bitmap.width) * scale,
-                          offsetY + (selection.y + bitmap.height) * scale
-                      )
-                      drawBitmap(bitmap, src, dst, paint)
-                 }
+                      val matrix = viewportState.getMatrix().apply {
+                          preTranslate(selection.x.toFloat(), selection.y.toFloat())
+                      }
+                      drawBitmap(bitmap, matrix, paint)
+                  }
                  
                  // Draw selection border
                   drawRect(
@@ -204,16 +193,13 @@ fun PixelCanvas(
             // 3. Draw Preview Layer
              projectState.previewLayer?.let { layer ->
                 with(drawContext.canvas.nativeCanvas) {
-                    val paint = android.graphics.Paint().apply { isFilterBitmap = false }
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = false
+                        isFilterBitmap = false
+                        isDither = false
+                    }
                     val bitmap = layer.bitmap as android.graphics.Bitmap
-                    val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
-                    val dst = android.graphics.RectF(
-                        offsetX,
-                        offsetY,
-                        offsetX + projectWidth * scale,
-                        offsetY + projectHeight * scale
-                    )
-                     drawBitmap(bitmap, src, dst, paint)
+                    drawBitmap(bitmap, viewportState.getMatrix(), paint)
                 }
             }
             

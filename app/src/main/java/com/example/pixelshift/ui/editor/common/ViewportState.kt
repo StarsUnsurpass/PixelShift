@@ -53,6 +53,31 @@ class ViewportState(
         this.offsetY = offsetY
     }
 
+    /**
+     * Calculates the transformation matrix for the current viewport state.
+     */
+    fun getMatrix(): android.graphics.Matrix {
+        return android.graphics.Matrix().apply {
+            postScale(scale, scale)
+            postTranslate(offsetX, offsetY)
+        }
+    }
+
+    /**
+     * Maps a screen coordinate to a bitmap coordinate with zero-drift precision.
+     * Uses the inverse of the viewport matrix and strict floor() rounding.
+     */
+    fun mapScreenToBitmap(screenX: Float, screenY: Float): Pair<Int, Int> {
+        val inverse = android.graphics.Matrix()
+        getMatrix().invert(inverse)
+        
+        val pts = floatArrayOf(screenX, screenY)
+        inverse.mapPoints(pts)
+        
+        // Zero-drift: strictly floor the mapped floating point coordinates
+        return kotlin.math.floor(pts[0]).toInt() to kotlin.math.floor(pts[1]).toInt()
+    }
+
     companion object {
         val Saver: Saver<ViewportState, Any> = listSaver(
             save = { listOf(it.scale, it.offsetX, it.offsetY) },
