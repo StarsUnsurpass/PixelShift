@@ -71,29 +71,39 @@ class PixelArtViewModel : ViewModel() {
     private var lastX: Int? = null
     private var lastY: Int? = null
 
-    fun initializeProject(width: Int, height: Int, backgroundColor: Color) {
-        val initialLayer =
+    fun initializeProject(width: Int, height: Int, isTransparent: Boolean, backgroundColor: Color) {
+        // Layer 0: Background (Locked)
+        // If solid, fill with color. If transparent, it's transparent.
+        val bgBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        if (!isTransparent) {
+            bgBitmap.eraseColor(backgroundColor.toArgb())
+        }
+        val bgLayer =
                 PixelLayer(
-                        name = "Layer 1",
-                        bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        name = "Layer 0",
+                        bitmap = bgBitmap,
+                        isLocked = true
                 )
 
-        // If background is transparent, we leave the bitmap empty (0).
-        // If it's a solid color, we fill it.
-        // Wait, the project has a background color property for the *canvas*, but layers are
-        // transparent by default.
-        // Let's assume the bottom-most layer/canvas background handles the solid color,
-        // OR we fill the first layer if the user requested a solid background fill.
-        // The requirement says "Background: Transparent or Solid".
-        // Use the project state background color for the "base", layers are on top.
+        // Layer 1: Draft (Active, Transparent)
+        val draftBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val draftLayer =
+                PixelLayer(
+                        name = "Layer 1",
+                        bitmap = draftBitmap,
+                        isLocked = false
+                )
+
+        // Layers are stored [Top, Bottom] based on addLayer logic
+        val layers = listOf(draftLayer, bgLayer)
 
         _projectState.value =
                 ProjectState(
                         width = width,
                         height = height,
-                        layers = listOf(initialLayer),
-                        activeLayerId = initialLayer.id,
-                        backgroundColor = backgroundColor
+                        layers = layers,
+                        activeLayerId = draftLayer.id,
+                        backgroundColor = if (isTransparent) Color.Transparent else backgroundColor
                 )
         undoStack.clear()
         redoStack.clear()
@@ -139,19 +149,41 @@ class PixelArtViewModel : ViewModel() {
     fun onPixelAction(x: Int, y: Int, isDrag: Boolean, isActionEnd: Boolean = false) {
         val state = _projectState.value ?: return
         val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
+        if (activeLayer.isLocked) return
         val bitmap = activeLayer.bitmap
-
-        if (x !in 0 until state.width || y !in 0 until state.height) {
-            if (isActionEnd) {
-                lastX = null
-                lastY = null
-            }
-            return
-        }
 
         val tool = _currentTool.value
         val color = _currentColor.value.toArgb()
         val size = _toolSettings.value.size
+
+        // If coordinates are out of bounds, we might still need to process isActionEnd (e.g. commit shape)
+        val isOutOfBounds = x !in 0 until state.width || y !in 0 until state.height
+
+        if (isOutOfBounds) {
+            if (isActionEnd) {
+                // Determine if we need to finish a shape or just reset
+                if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
+                     // If we are finishing a shape, we might need the last valid X/Y. 
+                     // But if x/y are -1 passed from DragEnd, we shouldn't use them as the end point.
+                     // The logic below for shapes uses 'x' and 'y' as end points.
+                     // We should probably use lastX/lastY if x/y are invalid? 
+                     // Actually, if we just want to commit what we have, we might need to handle it.
+                     // For now, let's just fall through to the isActionEnd block at the bottom
+                     // but ensure we don't 'draw' a new segment to -1,-1.
+                } else {
+                     // For PENCIL/ERASER, just reset
+                     lastX = null
+                     lastY = null
+                     saveState()
+                     return
+                }
+            } else {
+                // If just dragging out of bounds, do nothing
+                return
+            }
+        }
+
+
 
         when (tool) {
             Tool.PENCIL -> {
@@ -260,55 +292,77 @@ class PixelArtViewModel : ViewModel() {
                                 }
                         else -> {}
                     }
-                    _projectState.update { it }
+                    _projectState.update { it?.copy(version = it.version + 1) }
                 }
             }
             else -> {}
         }
 
         if (isActionEnd && lastX != null) {
-            when (tool) {
-                Tool.SHAPE_LINE ->
-                        DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
-                            if (px in 0 until state.width && py in 0 until state.height)
-                                    bitmap.setPixel(px, py, color)
-                        }
-                Tool.SHAPE_RECTANGLE ->
-                        DrawingAlgorithms.drawRectangle(
-                                lastX!!,
-                                lastY!!,
-                                x,
-                                y,
-                                size,
-                                _toolSettings.value.shapeFilled
-                        ) { px, py ->
-                            if (px in 0 until state.width && py in 0 until state.height)
-                                    bitmap.setPixel(px, py, color)
-                        }
-                Tool.SHAPE_CIRCLE ->
-                        DrawingAlgorithms.drawCircle(
-                                lastX!!,
-                                lastY!!,
-                                x,
-                                y,
-                                size,
-                                _toolSettings.value.shapeFilled
-                        ) { px, py ->
-                            if (px in 0 until state.width && py in 0 until state.height)
-                                    bitmap.setPixel(px, py, color)
-                        }
-                Tool.SELECTION_RECTANGLE -> {
-                    val left = minOf(lastX!!, x)
-                    val right = maxOf(lastX!!, x)
-                    val top = minOf(lastY!!, y)
-                    val bottom = maxOf(lastY!!, y)
-                    _projectState.update { it?.copy(previewLayer = null) }
-                    createRectSelection(android.graphics.Rect(left, top, right + 1, bottom + 1))
+            // Only commit shape if end coordinates are valid, OR if we want to commit the preview.
+            // Current logic redraws. If x,y are -1, we shouldn't draw.
+            // If the user released outside, maybe we should use clamp?
+            // For now, let's assume if x=-1, we abort the shape commit or commit to last valid?
+            // "lastX" is the START point.
+            
+            // If we received -1, -1, it means we don't have a valid "current" point.
+            // But we might have had a valid preview.
+            // Ideally we should commit the preview. But here we redraw.
+            
+            val validX = x.coerceIn(0, state.width - 1)
+            val validY = y.coerceIn(0, state.height - 1)
+            // Use clamped values if we are out of bounds but valid start exists?
+            // Or just check if x/y are -1.
+            
+            val shouldDraw = x in 0 until state.width && y in 0 until state.height
+            
+            if (shouldDraw) {
+                when (tool) {
+                    Tool.SHAPE_LINE ->
+                            DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
+                                if (px in 0 until state.width && py in 0 until state.height)
+                                        bitmap.setPixel(px, py, color)
+                            }
+                    Tool.SHAPE_RECTANGLE ->
+                            DrawingAlgorithms.drawRectangle(
+                                    lastX!!,
+                                    lastY!!,
+                                    x,
+                                    y,
+                                    size,
+                                    _toolSettings.value.shapeFilled
+                            ) { px, py ->
+                                if (px in 0 until state.width && py in 0 until state.height)
+                                        bitmap.setPixel(px, py, color)
+                            }
+                    Tool.SHAPE_CIRCLE ->
+                            DrawingAlgorithms.drawCircle(
+                                    lastX!!,
+                                    lastY!!,
+                                    x,
+                                    y,
+                                    size,
+                                    _toolSettings.value.shapeFilled
+                            ) { px, py ->
+                                if (px in 0 until state.width && py in 0 until state.height)
+                                        bitmap.setPixel(px, py, color)
+                            }
+                    Tool.SELECTION_RECTANGLE -> {
+                        val left = minOf(lastX!!, x)
+                        val right = maxOf(lastX!!, x)
+                        val top = minOf(lastY!!, y)
+                        val bottom = maxOf(lastY!!, y)
+                        _projectState.update { it?.copy(previewLayer = null) }
+                        createRectSelection(android.graphics.Rect(left, top, right + 1, bottom + 1))
+                    }
+                    Tool.SELECTION_MAGIC_WAND -> {
+                        createMagicWandSelection(x, y)
+                    }
+                    else -> {}
                 }
-                Tool.SELECTION_MAGIC_WAND -> {
-                    createMagicWandSelection(x, y)
-                }
-                else -> {}
+            } else {
+                 // If we are out of bounds (e.g. -1, -1 passed on release), 
+                 // we might still want to clear the preview layer
             }
 
             if (tool == Tool.SHAPE_LINE ||
@@ -316,7 +370,7 @@ class PixelArtViewModel : ViewModel() {
                             tool == Tool.SHAPE_CIRCLE ||
                             tool == Tool.SELECTION_RECTANGLE
             ) {
-                _projectState.update { it?.copy(previewLayer = null) }
+                _projectState.update { it?.copy(previewLayer = null, version = it.version + 1) }
             }
         }
 
@@ -336,7 +390,7 @@ class PixelArtViewModel : ViewModel() {
             saveState()
         }
 
-        _projectState.update { it?.copy(layers = it.layers.toList()) }
+        _projectState.update { it?.copy(layers = it.layers.toList(), version = it.version + 1) }
     }
 
     // Undo/Redo
@@ -424,7 +478,7 @@ class PixelArtViewModel : ViewModel() {
         val layer = state.layers.find { it.id == layerId } ?: return
         layer.isVisible = isVisible
         // Trigger update
-        _projectState.update { it?.copy(layers = it.layers.toList()) }
+        _projectState.update { it?.copy(layers = it.layers.toList(), version = it.version + 1) }
     }
 
     fun selectLayer(layerId: String) {
@@ -486,7 +540,7 @@ class PixelArtViewModel : ViewModel() {
 
                     // Check for L-shape
                     if (currentStrokePath.size >= 3) {
-                        val c = currentStrokePath.last // Current
+                        val c = currentStrokePath.last() // Current
                         val b = currentStrokePath[currentStrokePath.size - 2] // Middle
                         val a = currentStrokePath[currentStrokePath.size - 3] // Previous
 

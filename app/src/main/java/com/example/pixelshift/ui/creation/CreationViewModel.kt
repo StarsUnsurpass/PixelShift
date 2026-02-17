@@ -20,7 +20,8 @@ data class CreationState(
         val backgroundType: String = "Transparent", // "Transparent" or "Solid"
         val backgroundColor: Int = android.graphics.Color.WHITE,
         val widthError: String? = null,
-        val heightError: String? = null
+        val heightError: String? = null,
+        val showMemoryConfirmation: Boolean = false
 )
 
 class CreationViewModel(application: Application) : AndroidViewModel(application) {
@@ -118,10 +119,13 @@ class CreationViewModel(application: Application) : AndroidViewModel(application
         return if (w == null) {
             _uiState.update { it.copy(widthError = "Invalid") }
             false
-        } else if (w > 512) {
-            _uiState.update { it.copy(widthError = "Max 512px") }
+        } else if (w > 1024) {
+            _uiState.update { it.copy(widthError = "Max 1024px") }
             false
         } else {
+            // > 512 is handled by the UI showing a warning text based on value, 
+            // but we don't block it here unless we want to. 
+            // The prompt says "suggest keeping within 512".
             _uiState.update { it.copy(widthError = null) }
             true
         }
@@ -132,8 +136,8 @@ class CreationViewModel(application: Application) : AndroidViewModel(application
         return if (h == null) {
             _uiState.update { it.copy(heightError = "Invalid") }
             false
-        } else if (h > 512) {
-            _uiState.update { it.copy(heightError = "Max 512px") }
+        } else if (h > 1024) {
+             _uiState.update { it.copy(heightError = "Max 1024px") }
             false
         } else {
             _uiState.update { it.copy(heightError = null) }
@@ -147,9 +151,35 @@ class CreationViewModel(application: Application) : AndroidViewModel(application
         if (validateInput()) {
             val w = _uiState.value.width.toInt()
             val h = _uiState.value.height.toInt()
-            viewModelScope.launch { repository.addRecentCanvasConfig(w, h) }
-            val isTransparent = _uiState.value.backgroundType == "Transparent"
-            onSuccess(w, h, isTransparent, _uiState.value.backgroundColor)
+            
+            // Memory Check: 2MB threshold for single layer (w * h * 4 bytes)
+            val singleLayerBytes = w.toLong() * h.toLong() * 4
+            if (singleLayerBytes > 2 * 1024 * 1024) {
+                _uiState.update { it.copy(showMemoryConfirmation = true) }
+                return
+            }
+
+            proceedToCreate(w, h, onSuccess)
         }
+    }
+
+    fun confirmCreateCanvas(
+             onSuccess: (width: Int, height: Int, isTransparent: Boolean, color: Int) -> Unit
+    ) {
+         if (validateInput()) {
+             val w = _uiState.value.width.toInt()
+             val h = _uiState.value.height.toInt()
+             _uiState.update { it.copy(showMemoryConfirmation = false) }
+             proceedToCreate(w, h, onSuccess)
+         }
+    }
+
+    private fun proceedToCreate(w: Int, h: Int, onSuccess: (width: Int, height: Int, isTransparent: Boolean, color: Int) -> Unit) {
+        viewModelScope.launch { repository.addRecentCanvasConfig(w, h) }
+        val isTransparent = _uiState.value.backgroundType == "Transparent"
+        onSuccess(w, h, isTransparent, _uiState.value.backgroundColor)
+    }
+    fun resetMemoryConfirmation() {
+        _uiState.update { it.copy(showMemoryConfirmation = false) }
     }
 }

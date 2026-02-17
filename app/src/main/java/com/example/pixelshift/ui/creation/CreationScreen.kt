@@ -78,12 +78,12 @@ fun CreationScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Header
-            Text("New Project", style = MaterialTheme.typography.headlineLarge)
+            Text("新建项目", style = MaterialTheme.typography.headlineLarge)
 
             // Recent Section
             if (recentConfigs.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Recent", style = MaterialTheme.typography.titleMedium)
+                    Text("最近使用", style = MaterialTheme.typography.titleMedium)
 
                     SimpleFlowRow(horizontalGap = 8.dp, verticalGap = 8.dp) {
                         recentConfigs.forEach { config ->
@@ -106,14 +106,14 @@ fun CreationScreen(
 
             // Presets Section
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Presets", style = MaterialTheme.typography.titleMedium)
+                Text("预设", style = MaterialTheme.typography.titleMedium)
                 SimpleFlowRow(horizontalGap = 8.dp, verticalGap = 8.dp) {
-                    PresetChip("16x16", "Icon", 16, 16, viewModel)
-                    PresetChip("24x24", "Icon", 24, 24, viewModel)
-                    PresetChip("32x32", "Character", 32, 32, viewModel)
-                    PresetChip("48x48", "Character", 48, 48, viewModel)
-                    PresetChip("64x64", "Diverse", 64, 64, viewModel)
-                    PresetChip("128x128", "Scene", 128, 128, viewModel)
+                    PresetChip("16x16", "图标", 16, 16, viewModel)
+                    PresetChip("24x24", "图标", 24, 24, viewModel)
+                    PresetChip("32x32", "角色", 32, 32, viewModel)
+                    PresetChip("48x48", "角色", 48, 48, viewModel)
+                    PresetChip("64x64", "综合", 64, 64, viewModel)
+                    PresetChip("128x128", "场景", 128, 128, viewModel)
                     PresetChip("160x144", "GB", 160, 144, viewModel)
                     PresetChip("256x240", "NES", 256, 240, viewModel)
                 }
@@ -121,7 +121,7 @@ fun CreationScreen(
 
             // Custom Size Section
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Custom Size", style = MaterialTheme.typography.titleMedium)
+                Text("自定义尺寸", style = MaterialTheme.typography.titleMedium)
 
                 Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -130,7 +130,7 @@ fun CreationScreen(
                     OutlinedTextField(
                             value = uiState.width,
                             onValueChange = { viewModel.updateWidth(it) },
-                            label = { Text("Width") },
+                            label = { Text("宽度") },
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             isError = uiState.widthError != null,
@@ -146,7 +146,7 @@ fun CreationScreen(
                             Icon(
                                     if (uiState.isAspectRatioLocked) Icons.Default.Link
                                     else Icons.Default.LinkOff,
-                                    contentDescription = "Lock Aspect Ratio",
+                                    contentDescription = "锁定长宽比",
                                     tint =
                                             if (uiState.isAspectRatioLocked)
                                                     MaterialTheme.colorScheme.primary
@@ -154,14 +154,14 @@ fun CreationScreen(
                             )
                         }
                         IconButton(onClick = { viewModel.swapDimensions() }) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Swap Dimensions")
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "交换尺寸")
                         }
                     }
 
                     OutlinedTextField(
                             value = uiState.height,
                             onValueChange = { viewModel.updateHeight(it) },
-                            label = { Text("Height") },
+                            label = { Text("高度") },
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             isError = uiState.heightError != null,
@@ -173,7 +173,7 @@ fun CreationScreen(
 
             // Background Section
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Background", style = MaterialTheme.typography.titleMedium)
+                Text("背景", style = MaterialTheme.typography.titleMedium)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
@@ -181,7 +181,7 @@ fun CreationScreen(
                             onClick = { viewModel.setBackgroundType("Transparent") }
                     )
                     Text(
-                            "Transparent",
+                            "透明",
                             modifier =
                                     Modifier.clickable {
                                         viewModel.setBackgroundType("Transparent")
@@ -203,7 +203,7 @@ fun CreationScreen(
                             onClick = { viewModel.setBackgroundType("Solid") }
                     )
                     Text(
-                            "Solid Color",
+                            "纯色",
                             modifier = Modifier.clickable { viewModel.setBackgroundType("Solid") }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -243,7 +243,7 @@ fun CreationScreen(
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(16.dp)
-            ) { Text("Start Drawing", style = MaterialTheme.typography.titleMedium) }
+            ) { Text("开始绘制", style = MaterialTheme.typography.titleMedium) }
 
             Spacer(modifier = Modifier.height(16.dp))
         }

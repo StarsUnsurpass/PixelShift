@@ -28,7 +28,8 @@ fun AdaptiveLayoutScreen(
         canShowScreenData: Boolean = true,
         contentPadding: Dp = 16.dp,
         showImagePreviewAsStickyHeader: Boolean = true,
-        shouldDisableBackHandler: Boolean = false
+        shouldDisableBackHandler: Boolean = false,
+        floatingActionButton: @Composable () -> Unit = {}
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -123,6 +124,15 @@ fun AdaptiveLayoutScreen(
                             content = { buttons() }
                     )
                 }
+            }
+            
+            // FAB
+             Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(contentPadding)
+            ) {
+                floatingActionButton()
             }
         }
     }

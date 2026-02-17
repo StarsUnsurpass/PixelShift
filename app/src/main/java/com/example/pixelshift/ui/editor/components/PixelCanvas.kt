@@ -17,211 +17,234 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import com.example.pixelshift.ui.editor.common.ProjectState
+import com.example.pixelshift.ui.editor.common.PixelLayer
+import com.example.pixelshift.ui.editor.common.SelectionState
+import android.graphics.Bitmap
 import kotlin.math.floor
 
 @Composable
 fun PixelCanvas(
-        projectState: ProjectState,
-        onTap: (x: Int, y: Int) -> Unit,
-        onDragStart: (x: Int, y: Int) -> Unit,
-        onDrag: (x: Int, y: Int) -> Unit,
-        onDragEnd: () -> Unit,
-        modifier: Modifier = Modifier
+    projectState: ProjectState,
+    viewportState: com.example.pixelshift.ui.editor.common.ViewportState,
+    onTap: (Int, Int) -> Unit,
+    onDragStart: (Int, Int) -> Unit,
+    onDrag: (Int, Int) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
+    // We use BoxWithConstraints to get the available screen area for initial centering
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val screenWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
+        val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxHeight.toPx() }
 
-    val projectWidth = projectState.width
-    val projectHeight = projectState.height
+        // Reset initialization state when project ID changes
+        var isInitialized by remember(projectState.id) { mutableStateOf(false) }
 
-    Canvas(
-            modifier =
-                    modifier.fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(0.5f, 50f)
-                                    // Adjust offset logic to keep focus or at least not jump wildly
-                                    // Simplified for now
-                                    offsetX += pan.x
-                                    offsetY += pan.y
-                                }
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures { offset ->
-                                    // Transform touch coordinates to pixel coordinates
-                                    // (offset - translation) / scale
-                                    val canvasX = (offset.x - offsetX) / scale
-                                    val canvasY = (offset.y - offsetY) / scale
+        val projectWidth = projectState.width
+        val projectHeight = projectState.height
 
-                                    val pixelX = floor(canvasX).toInt()
-                                    val pixelY = floor(canvasY).toInt()
+        // Initial centering/scaling logic
+        LaunchedEffect(projectState.id, screenWidthPx, screenHeightPx) {
+            if (!isInitialized && screenWidthPx > 0 && screenHeightPx > 0) {
+                // Calculate initial scale to fit 80% of screen
+                val scaleX = (screenWidthPx * 0.8f) / projectWidth
+                val scaleY = (screenHeightPx * 0.8f) / projectHeight
+                val initialScale = minOf(scaleX, scaleY).coerceAtLeast(1f)
 
-                                    onTap(pixelX, pixelY)
-                                }
-                            }
-                            .pointerInput(Unit) {
-                                detectDragGestures(
-                                        onDragStart = { offset ->
-                                            val canvasX = (offset.x - offsetX) / scale
-                                            val canvasY = (offset.y - offsetY) / scale
-                                            onDragStart(
-                                                    floor(canvasX).toInt(),
-                                                    floor(canvasY).toInt()
-                                            )
-                                        },
-                                        onDrag = { change, _ ->
-                                            val canvasX = (change.position.x - offsetX) / scale
-                                            val canvasY = (change.position.y - offsetY) / scale
-                                            onDrag(floor(canvasX).toInt(), floor(canvasY).toInt())
-                                        },
-                                        onDragEnd = { onDragEnd() }
-                                )
-                            }
-    ) {
-        // Draw Checkerboard Background
-        // Optimization: Draw one big rect with a checkerboard shader or just looping?
-        // For small canvases, looping is fine. For large, maybe shader.
-        // Let's do a simple optimization: draw a solid color first if specified.
+                // Calculate initial offsets to center
+                val contentWidth = projectWidth * initialScale
+                val contentHeight = projectHeight * initialScale
+                val initialOffsetX = (screenWidthPx - contentWidth) / 2f
+                val initialOffsetY = (screenHeightPx - contentHeight) / 2f
 
-        // 1. Draw Canvas Background
-        drawIntoCanvas { canvas ->
-            // If transparent, we should draw checkerboard.
-            // Implementing a simple checkerboard pattern for the active area
-            // Draw the project area background
-            val bgColor = projectState.backgroundColor
-
-            if (bgColor == Color.Transparent) {
-                // Draw Checkerboard
-                val gridSize = 10f * scale // Size of checker squares
-                // Simplified checkerboard: just use a light gray/white pattern
-                // We can draw a large rect of white, then draw gray squares?
-                // Or just draw the rects.
-                // For performance on large canvas, infinite scrolling checkerboard is better done
-                // with a Shader.
-                // But for now, let's just fill with white and draw gray rects IF strictly needed.
-                // ACTUALLY: The user complained about "white background" effectively being blank?
-                // "Empty background".
-
-                // Let's draw a distinct checkerboard.
-                drawRect(
-                        color = Color.White,
-                        topLeft = Offset(offsetX, offsetY),
-                        size = Size(projectWidth * scale, projectHeight * scale)
-                )
-
-                val checkerSize = 20f
-                // This loop might be heavy for very large canvas if we loop per checker.
-                // But typically screen size is limited.
-                // We should loop over the VIEWPORT, not the whole project if possible.
-                // But the project is small (pixel art).
-
-                // Better: A shader. But let's stick to simple Compose primitives for now.
-                // Let's just draw a Gray rectangle for the whole thing if transparent, to
-                // distinguish from the "App Background".
-                // Or a border.
-
-                drawRect(
-                        color = Color.LightGray,
-                        topLeft = Offset(offsetX, offsetY),
-                        size = Size(projectWidth * scale, projectHeight * scale),
-                        style = Stroke(width = 2f)
-                )
-
-                // If the user wants a checkerboard, we can add it later.
-                // For now, a border helps show where the canvas IS.
-            } else {
-                drawRect(
-                        color = bgColor,
-                        topLeft = Offset(offsetX, offsetY),
-                        size = Size(projectWidth * scale, projectHeight * scale)
-                )
+                viewportState.set(initialScale, initialOffsetX, initialOffsetY)
+                isInitialized = true
             }
         }
 
-        // 2. Draw Layers
-        projectState.layers.forEach { layer ->
-            if (layer.isVisible) {
-                // Draw bitmap
-                // We need to scale it up.
-                // Using drawImage with dstSize or scaling the canvas?
-                // Scaling the canvas context is easier.
+        Canvas(
+            modifier =
+                Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { centroid, pan, zoom, _ ->
+                            val oldScale = viewportState.scale
+                            val newScale = (oldScale * zoom).coerceIn(0.1f, 500f)
+                            
+                            // Adjust offset to keep centroid fixed during zoom
+                            val cx = centroid.x
+                            val cy = centroid.y
+                            val ox = viewportState.offsetX
+                            val oy = viewportState.offsetY
+                            
+                            val nx = cx - (cx - ox) * (newScale / oldScale)
+                            val ny = cy - (cy - oy) * (newScale / oldScale)
+                            
+                            viewportState.set(newScale, nx + pan.x, ny + pan.y)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val scale = viewportState.scale
+                            val offsetX = viewportState.offsetX
+                            val offsetY = viewportState.offsetY
+                            
+                            val pixelX = floor((offset.x - offsetX) / scale).toInt()
+                            val pixelY = floor((offset.y - offsetY) / scale).toInt()
 
-                drawIntoCanvas { canvas ->
-                    canvas.save()
-                    canvas.translate(offsetX, offsetY)
-                    canvas.scale(scale, scale)
-
-                    // Important: Nearest Neighbor for crisp pixels!
-                    val paint =
-                            Paint().asFrameworkPaint().apply {
-                                isAntiAlias = false
-                                isFilterBitmap = false
+                            if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
+                                onTap(pixelX, pixelY)
                             }
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                val scale = viewportState.scale
+                                val offsetX = viewportState.offsetX
+                                val offsetY = viewportState.offsetY
+                                
+                                val pixelX = floor((offset.x - offsetX) / scale).toInt()
+                                val pixelY = floor((offset.y - offsetY) / scale).toInt()
+                                onDragStart(pixelX, pixelY)
+                            },
+                            onDrag = { change, _ ->
+                                val scale = viewportState.scale
+                                val offsetX = viewportState.offsetX
+                                val offsetY = viewportState.offsetY
+                                
+                                val pixelX = floor((change.position.x - offsetX) / scale).toInt()
+                                val pixelY = floor((change.position.y - offsetY) / scale).toInt()
+                                onDrag(pixelX, pixelY)
+                            },
+                            onDragEnd = { onDragEnd() }
+                        )
+                    }
+        ) {
+            val scale = viewportState.scale
+            val offsetX = viewportState.offsetX
+            val offsetY = viewportState.offsetY
+            
+            // 1. Draw Background
+             if (projectState.backgroundColor == Color.Transparent) {
+                     // Draw Gray Border to show bounds
+                    drawRect(
+                            color = Color.DarkGray, // Darker border for visibility
+                            topLeft = Offset(offsetX - 2, offsetY - 2),
+                            size = Size(projectWidth * scale + 4, projectHeight * scale + 4),
+                            style = Stroke(width = 2f)
+                    )
+                    drawRect(
+                            color = Color.White,
+                            topLeft = Offset(offsetX, offsetY),
+                            size = Size(projectWidth * scale, projectHeight * scale)
+                    )
+             } else {
+                 drawRect(
+                    color = projectState.backgroundColor,
+                    topLeft = Offset(offsetX, offsetY),
+                    size = Size(projectWidth * scale, projectHeight * scale)
+                )
+             }
 
-                    canvas.nativeCanvas.drawBitmap(layer.bitmap, 0f, 0f, paint)
+            // 2. Draw Layers
+            with(drawContext.canvas.nativeCanvas) {
+                // Reuse a single Paint instance
+                val paint = android.graphics.Paint().apply {
+                    isAntiAlias = false
+                    isFilterBitmap = false
+                    isDither = false
+                }
 
-                    canvas.restore()
+                projectState.layers.asReversed().forEach { layer ->
+                    if (layer.isVisible) {
+                        // Update opacity/alpha for this layer
+                        paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+
+                        val bitmap = layer.bitmap as android.graphics.Bitmap
+                        // We still create Rects here, could be optimized further but Paint was the big one
+                        val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+                        val dst = android.graphics.RectF(
+                            offsetX,
+                            offsetY,
+                            offsetX + projectWidth * scale,
+                            offsetY + projectHeight * scale
+                        )
+                        drawBitmap(bitmap, src, dst, paint)
+                    }
                 }
             }
-        }
-
-        // 2.5 Draw Floating Selection
-        projectState.selection?.let { selection ->
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(offsetX, offsetY)
-                canvas.scale(scale, scale)
-
-                val paint =
-                        Paint().asFrameworkPaint().apply {
-                            isAntiAlias = false
-                            isFilterBitmap = false
-                        }
-
-                canvas.nativeCanvas.drawBitmap(
-                        selection.bitmap,
-                        selection.x.toFloat(),
-                        selection.y.toFloat(),
-                        paint
-                )
-
-                // Optional: Draw border/marching ants here.
-                // For now, the floating content is visible on top.
-
-                canvas.restore()
+            
+             // 2.5 Draw Floating Selection
+            projectState.selection?.let { selection ->
+                 with(drawContext.canvas.nativeCanvas) {
+                     val paint = android.graphics.Paint().apply {
+                         isAntiAlias = false
+                         isFilterBitmap = false
+                     }
+                      val bitmap = selection.bitmap as android.graphics.Bitmap
+                      val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+                      val dst = android.graphics.RectF(
+                          offsetX + selection.x * scale,
+                          offsetY + selection.y * scale,
+                          offsetX + (selection.x + bitmap.width) * scale,
+                          offsetY + (selection.y + bitmap.height) * scale
+                      )
+                      drawBitmap(bitmap, src, dst, paint)
+                 }
+                 
+                 // Draw selection border
+                  drawRect(
+                      color = Color.Blue,
+                      topLeft = Offset(offsetX + selection.x * scale, offsetY + selection.y * scale),
+                      size = Size(selection.bitmap.width * scale, selection.bitmap.height * scale),
+                      style = Stroke(width = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                  )
             }
-        }
-
-        // 3. Draw Preview Layer
-        projectState.previewLayer?.let { layer ->
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(offsetX, offsetY)
-                canvas.scale(scale, scale)
-
-                val paint =
-                        Paint().asFrameworkPaint().apply {
-                            isAntiAlias = false
-                            isFilterBitmap = false
-                        }
-
-                canvas.nativeCanvas.drawBitmap(layer.bitmap, 0f, 0f, paint)
-
-                canvas.restore()
+            
+            // 3. Draw Preview Layer
+             projectState.previewLayer?.let { layer ->
+                with(drawContext.canvas.nativeCanvas) {
+                    val paint = android.graphics.Paint().apply { isFilterBitmap = false }
+                    val bitmap = layer.bitmap as android.graphics.Bitmap
+                    val src = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+                    val dst = android.graphics.RectF(
+                        offsetX,
+                        offsetY,
+                        offsetX + projectWidth * scale,
+                        offsetY + projectHeight * scale
+                    )
+                     drawBitmap(bitmap, src, dst, paint)
+                }
             }
-        }
-
-        // 4. Draw Grid (if zoomed in)
-        if (scale > 10f) { // Threshold for grid
-            drawGrid(
-                    offsetX = offsetX,
-                    offsetY = offsetY,
-                    scale = scale,
-                    rows = projectHeight,
-                    cols = projectWidth,
-                    color = Color.Gray.copy(alpha = 0.3f)
-            )
+            
+            // 4. Adaptive Grid
+            if (scale > 10f) {
+                // Draw vertical lines
+                for (x in 0..projectWidth) {
+                    val lineX = offsetX + x * scale
+                    if (lineX in 0f..size.width) {
+                        drawLine(
+                            color = Color.Gray.copy(alpha = 0.3f),
+                            start = Offset(lineX, offsetY),
+                            end = Offset(lineX, offsetY + projectHeight * scale),
+                            strokeWidth = 1f
+                        )
+                    }
+                }
+                
+                // Draw horizontal lines
+                for (y in 0..projectHeight) {
+                    val lineY = offsetY + y * scale
+                    if (lineY in 0f..size.height) {
+                        drawLine(
+                            color = Color.Gray.copy(alpha = 0.3f),
+                            start = Offset(offsetX, lineY),
+                            end = Offset(offsetX + projectWidth * scale, lineY),
+                            strokeWidth = 1f
+                        )
+                    }
+                }
+            }
         }
     }
 }

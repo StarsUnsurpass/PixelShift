@@ -1,6 +1,7 @@
 package com.example.pixelshift.ui.editor
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ import com.example.pixelshift.ui.editor.components.EditorBottomBar
 import com.example.pixelshift.ui.editor.components.LayerManagerSheet
 import com.example.pixelshift.ui.editor.components.Magnifier
 import com.example.pixelshift.ui.editor.components.PixelCanvas
+import com.example.pixelshift.ui.editor.common.rememberViewportState
 import com.example.pixelshift.ui.theme.ThemeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,17 +64,19 @@ fun PixelArtEditorScreen(
     val sheetState = rememberModalBottomSheetState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    val viewportState = rememberViewportState()
+    
     LaunchedEffect(Unit) {
         if (projectState == null) {
             val bgColor = if (isTransparentBackground) Color.Transparent else Color(backgroundColor)
-            viewModel.initializeProject(width, height, bgColor)
+            viewModel.initializeProject(width, height, isTransparentBackground, bgColor)
         }
     }
 
     Scaffold(
             topBar = {
                 TopAppBar(
-                        title = { Text("Pixel Editor") },
+                        title = { Text("像素编辑器") },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -81,9 +85,6 @@ fun PixelArtEditorScreen(
                         actions = {
                             IconButton(onClick = { viewModel.undo() }) {
                                 Icon(Icons.Default.Undo, contentDescription = "Undo")
-                            }
-                            IconButton(onClick = { viewModel.redo() }) {
-                                Icon(Icons.Default.Redo, contentDescription = "Redo")
                             }
                             IconButton(onClick = { viewModel.redo() }) {
                                 Icon(Icons.Default.Redo, contentDescription = "Redo")
@@ -109,23 +110,45 @@ fun PixelArtEditorScreen(
                 )
             }
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            val screenSize = androidx.compose.ui.geometry.Size(maxWidth.value, maxHeight.value) // Approximate in Dp, but we need Px for math?
+            // Actually, BoxWithConstraints gives Dp. Navigator logic uses ViewportState which is in Pixels.
+            // We need to pass pixel size to Navigator.
+            
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val screenWidthPx = with(density) { maxWidth.toPx() }
+            val screenHeightPx = with(density) { maxHeight.toPx() }
+            val screenSizePx = androidx.compose.ui.geometry.Size(screenWidthPx, screenHeightPx)
+
             if (projectState != null) {
                 PixelCanvas(
                         projectState = projectState!!,
+                        viewportState = viewportState,
                         onTap = { x, y ->
                             viewModel.onPixelAction(x, y, isDrag = false, isActionEnd = true)
                         },
                         onDragStart = { x, y -> viewModel.onPixelAction(x, y, isDrag = false) },
                         onDrag = { x, y -> viewModel.onPixelAction(x, y, isDrag = true) },
                         onDragEnd = {
-                            viewModel.onPixelAction(0, 0, isDrag = true, isActionEnd = true)
+                            viewModel.onPixelAction(-1, -1, isDrag = true, isActionEnd = true)
                         }
                 )
 
-                // Magnifier Overlay
-                Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
-                    Magnifier(magnifierState = magnifierState, projectState = projectState!!)
+                // Overlays
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Magnifier (Top-Left)
+                     Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
+                        Magnifier(magnifierState = magnifierState, projectState = projectState!!)
+                    }
+                    
+                    // Navigator (Top-Right)
+                    Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                         com.example.pixelshift.ui.editor.components.Navigator(
+                             projectState = projectState!!,
+                             viewportState = viewportState,
+                             screenSize = screenSizePx
+                         )
+                    }
                 }
             } else {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
