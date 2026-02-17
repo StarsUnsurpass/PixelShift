@@ -30,6 +30,8 @@ fun PixelCanvas(
     onDragStart: (Int, Int) -> Unit,
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit,
+    brushSize: Int = 1,
+    hoverPosition: Pair<Int, Int>? = null,
     modifier: Modifier = Modifier
 ) {
     // We use BoxWithConstraints to get the available screen area for initial centering
@@ -230,6 +232,30 @@ fun PixelCanvas(
                         )
                     }
                 }
+            }
+
+            // 5. Brush Ghost Cursor
+            hoverPosition?.let { (hx, hy) ->
+                val startX: Float
+                val startY: Float
+
+                if (brushSize % 2 != 0) {
+                    // Odd: Center
+                    val offset = brushSize / 2
+                    startX = offsetX + (hx - offset) * scale
+                    startY = offsetY + (hy - offset) * scale
+                } else {
+                    // Even: Top-Left
+                    startX = offsetX + hx * scale
+                    startY = offsetY + hy * scale
+                }
+
+                drawRect(
+                    color = Color.Gray,
+                    topLeft = Offset(startX, startY),
+                    size = Size(brushSize * scale, brushSize * scale),
+                    style = Stroke(width = 1f)
+                )
             }
         }
     }

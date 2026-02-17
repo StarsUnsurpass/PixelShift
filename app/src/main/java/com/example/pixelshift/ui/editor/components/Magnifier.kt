@@ -25,6 +25,7 @@ fun Magnifier(
         modifier: Modifier = Modifier,
         magnifierState: MagnifierState,
         projectState: ProjectState,
+        brushSize: Int = 1,
         zoomLevel: Float = 8f, // How much to zoom in within the magnifier
         magnifierSize: Int = 120 // Size of the magnifier bubble in dp
 ) {
@@ -59,15 +60,10 @@ fun Magnifier(
             }
 
             // Draw pixels
-            // We need to fetch the *composited* image from ProjectState or ActiveLayer
-            // Optimized approach:
-            
-            // 1. Draw solid background if set
             if (projectState.backgroundColor != Color.Transparent) {
                 drawRect(color = projectState.backgroundColor)
             }
 
-            // Draw visible pixels logic...
             val viewWidthInPixels = (canvasWidth / zoomLevel).toInt()
             val viewHeightInPixels = (canvasHeight / zoomLevel).toInt()
 
@@ -123,11 +119,25 @@ fun Magnifier(
                     strokeWidth = 2f
             )
 
-            // Draw outline of center pixel
+            // Draw outline of brush area
+            val contourStartX: Float
+            val contourStartY: Float
+
+            if (brushSize % 2 != 0) {
+                // Odd: Center
+                val offset = brushSize / 2
+                contourStartX = (canvasWidth - zoomLevel) / 2 - offset * zoomLevel
+                contourStartY = (canvasHeight - zoomLevel) / 2 - offset * zoomLevel
+            } else {
+                // Even: Top-Left (Center pixel is the top-left of the brush)
+                contourStartX = (canvasWidth - zoomLevel) / 2
+                contourStartY = (canvasHeight - zoomLevel) / 2
+            }
+
             drawRect(
                     color = Color.Red,
-                    topLeft = Offset((canvasWidth - zoomLevel) / 2, (canvasHeight - zoomLevel) / 2),
-                    size = Size(zoomLevel, zoomLevel),
+                    topLeft = Offset(contourStartX, contourStartY),
+                    size = Size(brushSize * zoomLevel, brushSize * zoomLevel),
                     style = Stroke(width = 2f)
             )
         }

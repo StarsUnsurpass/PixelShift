@@ -58,6 +58,9 @@ class PixelArtViewModel : ViewModel() {
     private data class PixelNode(val x: Int, val y: Int, val oldColor: Int)
     private val currentStrokePath = java.util.LinkedList<PixelNode>()
 
+    private val _hoverPosition = MutableStateFlow<Pair<Int, Int>?>(null)
+    val hoverPosition: StateFlow<Pair<Int, Int>?> = _hoverPosition.asStateFlow()
+
     // Magnifier State
     data class MagnifierState(
             val visible: Boolean = false,
@@ -145,8 +148,9 @@ class PixelArtViewModel : ViewModel() {
         _toolSettings.update { it.copy(size = size) }
     }
 
-    // Drawing Logic (Placeholder for now)
+    // Drawing Logic (Bresenham + Pixel Perfect)
     fun onPixelAction(x: Int, y: Int, isDrag: Boolean, isActionEnd: Boolean = false) {
+        _hoverPosition.value = if (isActionEnd) null else (x to y)
         val state = _projectState.value ?: return
         val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
         if (activeLayer.isLocked) return

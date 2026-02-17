@@ -121,9 +121,14 @@ fun PixelArtEditorScreen(
             val screenSizePx = androidx.compose.ui.geometry.Size(screenWidthPx, screenHeightPx)
 
             if (projectState != null) {
+                val toolSettings by viewModel.toolSettings.collectAsState()
+                val hoverPos by viewModel.hoverPosition.collectAsState()
+
                 PixelCanvas(
                         projectState = projectState!!,
                         viewportState = viewportState,
+                        brushSize = toolSettings.size,
+                        hoverPosition = hoverPos,
                         onTap = { x, y ->
                             viewModel.onPixelAction(x, y, isDrag = false, isActionEnd = true)
                         },
@@ -138,7 +143,11 @@ fun PixelArtEditorScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Magnifier (Top-Left)
                      Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
-                        Magnifier(magnifierState = magnifierState, projectState = projectState!!)
+                        Magnifier(
+                            magnifierState = magnifierState,
+                            projectState = projectState!!,
+                            brushSize = toolSettings.size
+                        )
                     }
                     
                     // Navigator (Top-Right)
