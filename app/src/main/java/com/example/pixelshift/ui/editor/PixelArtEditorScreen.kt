@@ -28,6 +28,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -129,11 +131,15 @@ fun PixelArtEditorScreen(
                         viewportState = viewportState,
                         brushSize = toolSettings.size,
                         hoverPosition = hoverPos,
-                        onTap = { x, y ->
-                            viewModel.onPixelAction(x, y, isDrag = false, isActionEnd = true)
+                        onTap = { x, y, rx, ry ->
+                            viewModel.onPixelAction(x, y, isDrag = false, isActionEnd = true, rawX = rx, rawY = ry)
                         },
-                        onDragStart = { x, y -> viewModel.onPixelAction(x, y, isDrag = false) },
-                        onDrag = { x, y -> viewModel.onPixelAction(x, y, isDrag = true) },
+                        onDragStart = { x, y, rx, ry, isShortcut ->
+                            viewModel.onPixelAction(x, y, isDrag = false, rawX = rx, rawY = ry, isShortcut = isShortcut)
+                        },
+                        onDrag = { x, y, rx, ry ->
+                            viewModel.onPixelAction(x, y, isDrag = true, rawX = rx, rawY = ry)
+                        },
                         onDragEnd = {
                             viewModel.onPixelAction(-1, -1, isDrag = true, isActionEnd = true)
                         }
@@ -141,16 +147,39 @@ fun PixelArtEditorScreen(
 
                 // Overlays
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Magnifier (Top-Left)
-                     Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
+                    // Precision Loupe (Dynamic Follow Finger)
+                    if (magnifierState.visible) {
+                        val loupeSizeDp = 140.dp
+                        val loupeSizePx = with(density) { loupeSizeDp.toPx() }
+                        val offsetDp = 100.dp
+                        val offsetPx = with(density) { offsetDp.toPx() }
+                        
+                        // Collision Detection: if screenY < 150dp, flip to bottom
+                        val isNearTop = magnifierState.screenY < with(density) { 150.dp.toPx() }
+                        val targetY = if (isNearTop) {
+                            magnifierState.screenY + offsetPx - loupeSizePx / 2
+                        } else {
+                            magnifierState.screenY - offsetPx - loupeSizePx / 2
+                        }
+                        
+                        val targetX = magnifierState.screenX - loupeSizePx / 2
+
                         Magnifier(
+                            modifier = Modifier
+                                .offset {
+                                    androidx.compose.ui.unit.IntOffset(
+                                        targetX.toInt(),
+                                        targetY.toInt()
+                                    )
+                                },
                             magnifierState = magnifierState,
                             projectState = projectState!!,
-                            brushSize = toolSettings.size
+                            brushSize = 1, // Loupe usually shows 1px target
+                            magnifierSize = loupeSizeDp
                         )
                     }
                     
-                    // Navigator (Top-Right)
+                    // Navigator (Top-Right) - Keep it fixed for overview
                     Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
                          com.example.pixelshift.ui.editor.components.Navigator(
                              projectState = projectState!!,

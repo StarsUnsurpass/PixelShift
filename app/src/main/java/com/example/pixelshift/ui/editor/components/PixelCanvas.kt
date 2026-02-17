@@ -28,9 +28,9 @@ import kotlin.math.floor
 fun PixelCanvas(
     projectState: ProjectState,
     viewportState: com.example.pixelshift.ui.editor.common.ViewportState,
-    onTap: (Int, Int) -> Unit,
-    onDragStart: (Int, Int) -> Unit,
-    onDrag: (Int, Int) -> Unit,
+    onTap: (Int, Int, Float, Float) -> Unit,
+    onDragStart: (Int, Int, Float, Float, Boolean) -> Unit,
+    onDrag: (Int, Int, Float, Float) -> Unit,
     onDragEnd: () -> Unit,
     brushSize: Int = 1,
     hoverPosition: Pair<Int, Int>? = null,
@@ -90,35 +90,30 @@ fun PixelCanvas(
                         }
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            val scale = viewportState.scale
-                            val offsetX = viewportState.offsetX
-                            val offsetY = viewportState.offsetY
-                            
-                            val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
-
-                            if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
-                                onTap(pixelX, pixelY)
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
+                                if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
+                                    onTap(pixelX, pixelY, offset.x, offset.y)
+                                }
+                            },
+                            onLongPress = { offset ->
+                                val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
+                                if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
+                                    onDragStart(pixelX, pixelY, offset.x, offset.y, true)
+                                }
                             }
-                        }
+                        )
                     }
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                val scale = viewportState.scale
-                                val offsetX = viewportState.offsetX
-                                val offsetY = viewportState.offsetY
-                                
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
-                                onDragStart(pixelX, pixelY)
+                                onDragStart(pixelX, pixelY, offset.x, offset.y, false)
                             },
                             onDrag = { change, _ ->
-                                val scale = viewportState.scale
-                                val offsetX = viewportState.offsetX
-                                val offsetY = viewportState.offsetY
-                                
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
-                                onDrag(pixelX, pixelY)
+                                onDrag(pixelX, pixelY, change.position.x, change.position.y)
                             },
                             onDragEnd = { onDragEnd() }
                         )

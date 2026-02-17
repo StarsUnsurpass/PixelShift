@@ -66,11 +66,14 @@ class PixelArtViewModel : ViewModel() {
             val visible: Boolean = false,
             val x: Int = 0,
             val y: Int = 0, // Pixel coordinates
+            val screenX: Float = 0f,
+            val screenY: Float = 0f, // Raw screen coords for placement
             val targetColor: Color = Color.Transparent
     )
     private val _magnifierState = MutableStateFlow(MagnifierState())
     val magnifierState: StateFlow<MagnifierState> = _magnifierState.asStateFlow()
 
+    private var savedToolBeforeShortcut: Tool? = null
     private var lastX: Int? = null
     private var lastY: Int? = null
 
@@ -149,7 +152,12 @@ class PixelArtViewModel : ViewModel() {
     }
 
     // Drawing Logic (Bresenham + Pixel Perfect)
-    fun onPixelAction(x: Int, y: Int, isDrag: Boolean, isActionEnd: Boolean = false) {
+    fun onPixelAction(x: Int, y: Int, isDrag: Boolean, isActionEnd: Boolean = false, rawX: Float = 0f, rawY: Float = 0f, isShortcut: Boolean = false) {
+        if (isShortcut && !isActionEnd && _currentTool.value != Tool.EYEDROPPER) {
+            savedToolBeforeShortcut = _currentTool.value
+            _currentTool.value = Tool.EYEDROPPER
+        }
+        
         _hoverPosition.value = if (isActionEnd) null else (x to y)
         val state = _projectState.value ?: return
         val activeLayer = state.layers.find { it.id == state.activeLayerId } ?: return
@@ -223,20 +231,32 @@ class PixelArtViewModel : ViewModel() {
 
                 if (isDrag) {
                     _magnifierState.value =
-                            MagnifierState(visible = true, x = x, y = y, targetColor = pixelColor)
-                } else {
-                    if (!isActionEnd) {
-                        _currentColor.value = pixelColor
-                        _currentTool.value = Tool.PENCIL
-                    }
+                            MagnifierState(
+                                visible = true,
+                                x = x,
+                                y = y,
+                                screenX = rawX,
+                                screenY = rawY,
+                                targetColor = pixelColor
+                            )
+                } else if (!isActionEnd) {
+                    // Tap to pick
+                    _currentColor.value = pixelColor
+                    _currentTool.value = Tool.PENCIL
                 }
 
-                if (isActionEnd) {
-                    if (isDrag) {
-                        _currentColor.value = pixelColor
+                if (isActionEnd && isDrag) {
+                    _currentColor.value = pixelColor
+                    _magnifierState.value = _magnifierState.value.copy(visible = false)
+                    
+                    // Restore tool if it was a shortcut
+                    savedToolBeforeShortcut?.let {
+                        _currentTool.value = it
+                        savedToolBeforeShortcut = null
+                    } ?: run {
+                        // Normal switch if we were already in EYEDROPPER
                         _currentTool.value = Tool.PENCIL
                     }
-                    _magnifierState.value = _magnifierState.value.copy(visible = false)
                 }
             }
             Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> {
@@ -576,47 +596,71 @@ class PixelArtViewModel : ViewModel() {
                 return Color.Transparent.toArgb()
 
         return if (_toolSettings.value.sampleAllLayers) {
-            // Iterate layers from bottom to top for blending
-            var r = 0f
-            var g = 0f
-            var b = 0f
-            var a = 0f
+        // Top-Down Raycasting with Alpha Blending
+        var finalR = 0f
+        var finalG = 0f
+        var finalB = 0f
+        var finalA = 0f
 
-            // Start with background
-            if (state.backgroundColor != Color.Transparent) {
-                val bg = state.backgroundColor
-                r = bg.red
-                g = bg.green
-                b = bg.blue
-                a = bg.alpha
-            }
+        // 1. Traverse layers from top to bottom
+        state.layers.forEach { layer ->
+            if (layer.isVisible) {
+                val pixel = layer.bitmap.getPixel(x, y)
+                val srcColor = Color(pixel)
+                val srcA = srcColor.alpha
 
-            // Blend layers
-            state.layers.asReversed().forEach { layer ->
-                if (layer.isVisible) {
-                    val pixel = layer.bitmap.getPixel(x, y)
-                    val color = Color(pixel)
-                    if (color.alpha > 0f) {
-                        val srcA = color.alpha
-                        val dstA = a
-                        val outA = srcA + dstA * (1f - srcA)
-
-                        if (outA > 0f) {
-                            r = (color.red * srcA + r * dstA * (1f - srcA)) / outA
-                            g = (color.green * srcA + g * dstA * (1f - srcA)) / outA
-                            b = (color.blue * srcA + b * dstA * (1f - srcA)) / outA
-                            a = outA
+                if (srcA > 0f) {
+                    // Blending formula: out = src + dst * (1 - srcA)
+                    if (finalA == 0f) {
+                        // First visible pixel found
+                        finalR = srcColor.red
+                        finalG = srcColor.green
+                        finalB = srcColor.blue
+                        finalA = srcA
+                    } else {
+                        // Blend with what we already have (which is above this layer)
+                        // Actually, if we go Top-Down, we are blending UNDER.
+                        // Correct Top-Down blending:
+                        // Result = TopLayer.RGB * TopA + UnderLayers.RGB * UnderA * (1 - TopA)
+                        // Wait, easier to track "remaining transmittance"
+                        // But let's stick to standard iterative blending:
+                        val dstA = finalA
+                        val newA = dstA + srcA * (1f - dstA)
+                        if (newA > 0f) {
+                            finalR = (finalR * dstA + srcColor.red * srcA * (1f - dstA)) / newA
+                            finalG = (finalG * dstA + srcColor.green * srcA * (1f - dstA)) / newA
+                            finalB = (finalB * dstA + srcColor.blue * srcA * (1f - dstA)) / newA
+                            finalA = newA
                         }
                     }
+                    
+                    // Optimization: if we are fully opaque, stop here
+                    if (finalA >= 0.99f) return@forEach
                 }
             }
-            Color(r, g, b, a).toArgb()
-        } else {
-            // Current Layer Only
-            val activeLayer = state.layers.find { it.id == state.activeLayerId }
-            activeLayer?.bitmap?.getPixel(x, y) ?: Color.Transparent.toArgb()
         }
+
+        // 2. Blend with background if still transparent
+        if (finalA < 1f && state.backgroundColor != Color.Transparent) {
+            val bg = state.backgroundColor
+            val srcA = bg.alpha
+            val dstA = finalA
+            val newA = dstA + srcA * (1f - dstA)
+            if (newA > 0f) {
+                finalR = (finalR * dstA + bg.red * srcA * (1f - dstA)) / newA
+                finalG = (finalG * dstA + bg.green * srcA * (1f - dstA)) / newA
+                finalB = (finalB * dstA + bg.blue * srcA * (1f - dstA)) / newA
+                finalA = newA
+            }
+        }
+
+        Color(finalR, finalG, finalB, finalA).toArgb()
+    } else {
+        // Current Layer Only
+        val activeLayer = state.layers.find { it.id == state.activeLayerId }
+        activeLayer?.bitmap?.getPixel(x, y) ?: Color.Transparent.toArgb()
     }
+}
 
     // --- Selection Helper Methods ---
 
