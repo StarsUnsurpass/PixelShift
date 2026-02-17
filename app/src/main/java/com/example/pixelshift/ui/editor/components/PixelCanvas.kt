@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.example.pixelshift.ui.editor.common.ProjectState
 import com.example.pixelshift.ui.editor.common.PixelLayer
 import com.example.pixelshift.ui.editor.common.SelectionState
@@ -34,6 +36,9 @@ fun PixelCanvas(
     hoverPosition: Pair<Int, Int>? = null,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
+    val checkSizePx = with(density) { 8.dp.toPx() }
+
     // We use BoxWithConstraints to get the available screen area for initial centering
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val screenWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
@@ -124,26 +129,64 @@ fun PixelCanvas(
             val offsetY = viewportState.offsetY
             
             // 1. Draw Background
-             if (projectState.backgroundColor == Color.Transparent) {
-                     // Draw Gray Border to show bounds
-                    drawRect(
-                            color = Color.DarkGray, // Darker border for visibility
-                            topLeft = Offset(offsetX - 2, offsetY - 2),
-                            size = Size(projectWidth * scale + 4, projectHeight * scale + 4),
-                            style = Stroke(width = 2f)
-                    )
-                    drawRect(
-                            color = Color.White,
-                            topLeft = Offset(offsetX, offsetY),
-                            size = Size(projectWidth * scale, projectHeight * scale)
-                    )
-             } else {
-                 drawRect(
-                    color = projectState.backgroundColor,
-                    topLeft = Offset(offsetX, offsetY),
-                    size = Size(projectWidth * scale, projectHeight * scale)
+            val canvasRect = androidx.compose.ui.geometry.Rect(
+                offsetX,
+                offsetY,
+                offsetX + projectWidth * scale,
+                offsetY + projectHeight * scale
+            )
+
+            drawIntoCanvas { canvas ->
+                canvas.save()
+                canvas.clipRect(
+                    left = canvasRect.left,
+                    top = canvasRect.top,
+                    right = canvasRect.right,
+                    bottom = canvasRect.bottom
                 )
-             }
+
+                if (projectState.backgroundColor == Color.Transparent) {
+                    // Stable Checkerboard: Fixed 8dp squares that don't scale
+                    // Using pre-calculated checkSizePx to avoid Composable context error
+                    
+                    // We draw covering the viewport but clipped to project bounds
+                    val horizontalChecks = (size.width / checkSizePx).toInt() + 2
+                    val verticalChecks = (size.height / checkSizePx).toInt() + 2
+                    
+                    for (i in -1..horizontalChecks) {
+                        for (j in -1..verticalChecks) {
+                            if ((i + j) % 2 == 0) {
+                                drawRect(
+                                    color = Color(0xFFE0E0E0), // Light gray
+                                    topLeft = Offset(i * checkSizePx, j * checkSizePx),
+                                    size = Size(checkSizePx, checkSizePx)
+                                )
+                            } else {
+                                drawRect(
+                                    color = Color.White,
+                                    topLeft = Offset(i * checkSizePx, j * checkSizePx),
+                                    size = Size(checkSizePx, checkSizePx)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    drawRect(
+                        color = projectState.backgroundColor,
+                        topLeft = Offset(offsetX, offsetY),
+                        size = Size(projectWidth * scale, projectHeight * scale)
+                    )
+                }
+                canvas.restore()
+            }
+
+            // Draw Border
+            drawRect(
+                color = Color.DarkGray,
+                topLeft = Offset(offsetX - 1f, offsetY - 1f),
+                size = Size(projectWidth * scale + 2f, projectHeight * scale + 2f),
+                style = Stroke(width = 1f)
+            )
 
             // 2. Draw Layers
             with(drawContext.canvas.nativeCanvas) {
