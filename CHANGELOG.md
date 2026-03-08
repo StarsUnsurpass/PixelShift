@@ -2,103 +2,33 @@
 
 本项目的所有重大更改将记录在此处。
 
+## [2.0] - 2026-03-08
+
+### ✨ 新增 (Added)
+- **Professional Layer System (专业级图层系统)**:
+    - **Entity-based Model**: 重构图层为具备 UUID 唯一标识的实体对象，彻底解决撤销/重做及排序时的索引错位灾难。
+    - **Hardware-Accelerated Compositing**: 实现基于**画家算法 (Painter's Algorithm)** 的渲染管线，支持 $O(1)$ 可见性裁剪。
+    - **Advanced Blend Modes**: 引入正片叠底 (Multiply)、滤色 (Screen)、叠加 (Overlay) 等多种光学混合模式，由 GPU 片元着色器实时计算。
+    - **Interactive Reordering**: 支持长按拖拽重排图层，配合 `zIndex` 浮空幻象与 `animateItemPlacement` 位移动画。
+    - **Non-Destructive Editing**: 所有的透明度 (Opacity) 和混合模式调整均在渲染时动态应用，不破坏原始像素数据。
+- **Commercial-Grade Persistence & Export (商业级存档与导出)**:
+    - **.pxl Private Project Format**: 自研基于 ZIP 的混合打包格式。`manifest.json` 存储元数据，各图层以无损 PNG 资产隔离存储，兼顾解析速度与内存安全。
+    - **Lossless Upscale Engine**: 导出时强制采用**最近邻插值 (Nearest Neighbor)**，支持 1x 至 30x 自由放大，确保像素边缘如刀切般锐利。
+    - **Project Lifecycle Management**: 集成 Android 原生存取框架，支持工程文件的“打开”与“另存为”。
+- **Elite Auxiliary Drawing Tools (精英级辅助工具)**:
+    - **Symmetry Drawing (对称/镜像)**: 在绘图引擎层注入 X/Y 轴映射逻辑，支持单笔触多点同步写入及原子化 Undo 记录。
+    - **Bilinear Reference Layer**: 引入物理隔离的参考图层，采用双线性过滤渲染以确保高分辨率背景清晰，与硬边缘像素网格和谐共存。
+    - **High-Performance Navigator**: 实现基于**逆矩阵映射 (Inverse Matrix Mapping)** 的全局导航窗，支持在小窗中通过反向平移控制主视口。
+- **Color Central Central (色彩数据中枢)**:
+    - **HSV-First Picker**: 针对像素画师优化的 HSV 色彩空间控制，支持精确的 Hue-Shifting。
+    - **Hex Two-way Binding**: 实现 HEX 代码与滑块位置的 120Hz 实时双向绑定。
+    - **Lospec Ecosystem Connect**: 实现与 Lospec.com 官网 API 的异步直连，支持通过 Slug 一键导入全球顶尖像素画色板。
+    - **Retrofit Presets**: 内置 GameBoy, Pico-8, NES 等复古硬件限色预设。
+
+### 🐛 修复 (Fixed)
+- **解决撤销/重做“双击”难题**: 优化 `saveState()` 调用时机，将其从“动作结束”前移至“落笔瞬时”，并清除所有冗余快照保存点。
+- **修正 Bitmap 类型安全**: 修复了 `duplicateLayer` 时 `Bitmap.Config` 可选性导致的编译不匹配问题。
+- **完善渲染同步**: 引入全局 `version` (Render Trigger) 机制，解决了直接修改像素引用不变导致 Compose 不重组的问题。
+
 ## [1.5] - 2026-03-08
-
-### ✨ 新增 (Added)
-- **High-Performance Shape Engine (高性能形状引擎)**:
-    - **Bresenham 直线算法**: 实现纯整数决策逻辑，消除了浮点运算和除法，确保直线绘制像素精准且绝对连续。
-    - **中点画圆算法 (Midpoint Circle Algorithm)**: 利用八分对称性将圆弧计算量猛砍 87.5%，彻底摒弃三角函数。
-    - **Ghost Layer (幽灵预览图层)**: 引入常驻内存的预览引擎，通过复用 Bitmap 彻底消除了形状拉扯时的 GC 抖动，支撑 120Hz 顺滑预览。
-    - **实心填充优化**: 针对矩形和圆形实现基于扫描线的水平内存批处理（`Arrays.fill`），将 JNI 跨界调用降至极限。
-- **UI & 交互革新**:
-    - **Viewport Control (虚拟摄影机)**: 实现了基于强状态机的手势分离，双指缩放时自动拦截绘图信号，确保交互稳如磐石。
-    - **40dp 黄金触控映射**: 引入动态缩放限制（`density * 40f`），确保极限放大下单个像素仍符合人体工学的精准触控尺寸。
-    - **Adaptive Grid (自适应网格)**: 实现了基于 Alpha 平滑插值的淡入效果及视口裁剪（$O(Visible)$）算法，在大尺寸画布下依然维持 120Hz 稳定渲染。
-    - **Pro-Gesture Shortcuts (专业快捷手势)**:
-        - **双指/三指点击**: 实现极速撤销与重做，辅以 300ms 时间窗判定和 TouchSlop 位移过滤。
-        - **长按取色劫持**: 支持在绘图过程中长按触发“巡航吸色”，配合 Haptic 触感反馈和实时放大镜，实现无缝创作心流。
-    - **独立填充切换**: 矩形和圆形的“空心/实心”状态现在完全解耦，支持独立控制。
-    - **连击交互**: 在工具栏连击已选中的形状工具，即可在空心和实心模式间快速循环。
-    - **自适应图标映射**: 底部工具栏图标现在能实时反映形状的实虚状态（如 `RadioButtonUnchecked` 与 `Circle` 动态联动）。
-    - **全新 App 图标**: 设计并部署了 **PixelShift** 矢量自适应图标，融合了 3D 悬浮矩形与渐变像素方块。
-
-### 🐛 修复 (Fixed)
-- **根治导航闪退**: 补全了 `MainScreen.kt` 中缺失的“设置”与“格式转换”路由注册。
-- **修复形状消失 Bug**: 优化了 `ACTION_UP` 时的坐标钳制逻辑，确保在画布边缘释放手指时形状依然能正确提交。
-- **解决起点偏移**: 引入 `startX/startY` 强锁定机制，彻底修复了直线错误从左上角 (0,0) 开始的问题。
-- **清除资源冲突**: 清理了 `app` 模块中所有旧版 PNG 资源，确保全新矢量图标在桌面正确显示。
-
-## [1.4] - 2026-02-18
-
-### ✨ 新增 (Added)
-- **Precision Eyedropper Tool (高精度取色器)**:
-    - **Loupe System (放大镜系统)**: 采用圆形 Loupe 设计，支持物理偏移（避免手指遮挡）和碰撞检测（自动上下翻转）。
-    - **高倍率缩放**: 16倍 Nearest Neighbor 缩放，配合 1px 反色十字准心，实现像素级精准取色。
-    - **多交互模式**: 支持单点取色、长按并拖动“巡航”取色、松开确认取色。
-    - **专业快捷键**: 在使用铅笔工具时，长按画布可临时切换至取色器，释放后自动恢复。
-    - **跨层采样算法**: 实现了 Top-Down Raycasting 算法，支持实时 Alpha 混合采样，所见即所得。
-
-### 🐛 修复 (Fixed)
-- 修复了 `PixelArtViewModel.kt` 中由于括号不匹配导致的构建失败问题。
-- 修复了 `Magnifier.kt` 中组件引用和 Dp 转换时的类型推断错误。
-- 完善了 `PixelArtEditorScreen` 中的布局偏移 (offset) 导入问题。
-
-## [1.3] - 2026-02-14
-
-### ✨ 新增 (Added)
-- **Pixel Art Editor (像素画编辑器)**:
-    - **全功能绘图引擎**: 支持铅笔、橡皮擦、油漆桶、取色器。
-    - **Pixel Perfect 算法**: 自动优化线条，去除L型转角，使线条更平滑自然。
-    - **形状工具**: 支持绘制直线、矩形、圆形（可填充）。
-    - **图层管理**: 支持多图层编辑，包括添加、删除、隐藏、可见性切换。
-    - **选区系统**:
-        - **矩形选区**: 支持框选区域。
-        - **魔棒工具 (Magic Wand)**: 支持按颜色容差自动选择连通区域。
-        - **选区变换**: 支持选区内容的移动、90度旋转、水平/垂直翻转。
-        - **浮动选区**: 选区内容可作为临时浮动层进行独立编辑。
-    - **手势支持**: 支持画布无限画布、双指缩放/平移、放大镜精准取色。
-    - **UI 优化**: 新增底部工具栏 (支持滑动)、工具设置面板 (笔刷大小、抖动开关等)。
-- **FlowRow 优化**: 修复了 CreationScreen 中的布局崩溃问题，实现了自定义 `SimpleFlowRow`。
-
-### 🐛 修复 (Fixed)
-- 修复了编辑器工具栏在某些设备上显示不全的问题 (添加了横向滚动)。
-- 修复了画布背景透明导致看起来像白屏的问题 (添加了白色背景和灰色边框)。
-- 修复了 `PixelArtViewModel.kt` 中的构建错误 (括号不匹配、when 表达式未穷尽)。
-- 修复了 `PixelArtEditorScreen` 中的潜在空指针崩溃。
-
-## [1.2] - 2026-02-08
-
-### ✨ 新增 (Added)
-- **Pixel Art Pipeline (三步处理流水线)**:
-    - **Smart Smoothing**: 集成桑原滤波器 (Kuwahara Filter)，实现“油画/卡通”风格平滑，减少噪点。
-    - **Grid-based Downsampling**: 严格使用最近邻插值 (Nearest Neighbor) 进行像素化，保证边缘清晰。
-    - **Color Quantization**: 集成 K-Means 聚类算法，支持“自动”调色板生成。
-- **UI 实时进度**: 编辑器界面现在分步显示处理过程 (平滑 -> 像素化 -> 量化)。
-
-## [1.1] - 2026-02-08
-
-### ✨ 新增 (Added)
-- **UI 重构**: 全新的 ImageToolbox 风格界面，支持 Edge-to-Edge 沉浸式显示。
-- **预览区增强**:
-    - 添加透明棋盘格背景 (`CheckerboardBackground`)。
-    - `ZoomableImage`: 支持双指缩放和平移操作。
-    - **长按对比**: 长按预览图可查看原图。
-- **底部控制面板**:
-    - 圆角卡片式设计，支持上下滑动。
-    - 分组管理参数 (基础, 像素化, 调色板, 高级, 输出)。
-- **触感反馈 (Haptics)**: 滑块操作、保存成功时提供振动反馈。
-- **动态取色**: UI 控件颜色根据系统壁纸自动适配 (Material You)。
-- **本地化**: 全面支持简体中文界面。
-- **多格式导出**: 支持 PNG, JPG, WEBP 导出。
-- **Pixel Perfect Upscale**: 支持整数倍无损放大导出，防止像素模糊。
-
-### 🐛 修复 (Fixed)
-- 修复了 `libs.versions.toml` 中 `material-icons-extended` 的版本依赖错误。
-
-## [1.0] - ITIA (Initial Test Implementation Alpha)
-
-### 🎉 初始发布
-- 基础架构搭建 (Clean Architecture, MVVM)。
-- 核心图像处理算法 (KotlinImageProcessor): 下采样 (Downsampling), 量化 (Quantization), 抖动 (Dithering)。
-- 基础编辑器界面和仪表盘。
-- 支持从相册导入图片和保存到本地。
+... [rest of file]
