@@ -79,6 +79,9 @@ class PixelArtViewModel : ViewModel() {
     private var lastValidDragX: Int? = null
     private var lastValidDragY: Int? = null
 
+    // Persistent Preview Bitmap to avoid GC churn
+    private var persistentPreviewBitmap: Bitmap? = null
+
     fun initializeProject(width: Int, height: Int, isTransparent: Boolean, backgroundColor: Color) {
         val bgBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         if (!isTransparent) {
@@ -99,6 +102,9 @@ class PixelArtViewModel : ViewModel() {
                         isLocked = false
                 )
 
+        // Pre-allocate the ghost layer bitmap
+        persistentPreviewBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
         val layers = listOf(draftLayer, bgLayer)
 
         _projectState.value =
@@ -107,7 +113,8 @@ class PixelArtViewModel : ViewModel() {
                         height = height,
                         layers = layers,
                         activeLayerId = draftLayer.id,
-                        backgroundColor = if (isTransparent) Color.Transparent else backgroundColor
+                        backgroundColor = if (isTransparent) Color.Transparent else backgroundColor,
+                        previewLayer = PixelLayer(id = "preview", name = "Preview", bitmap = persistentPreviewBitmap!!, isVisible = false)
                 )
         undoStack.clear()
         redoStack.clear()
@@ -169,26 +176,15 @@ class PixelArtViewModel : ViewModel() {
         val color = _currentColor.value.toArgb()
         val size = _toolSettings.value.size
 
-        if (!isDrag && !isActionEnd) {
-            startX = x
-            startY = y
-            lastX = x
-            lastY = y
-            lastValidDragX = x
-            lastValidDragY = y
-            
-            if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
-                val previewBitmap = Bitmap.createBitmap(state.width, state.height, Bitmap.Config.ARGB_8888)
-                val previewLayer = PixelLayer(id = "preview", name = "Preview", bitmap = previewBitmap)
-                _projectState.update { it?.copy(previewLayer = previewLayer, version = it.version + 1) }
-            }
-        }
-
+        // 1. ACTION_UP: Final Bake
         if (isActionEnd) {
             if (startX != null && startY != null) {
                 val commitX = if (x in 0 until state.width) x else (lastValidDragX ?: startX!!)
                 val commitY = if (y in 0 until state.height) y else (lastValidDragY ?: startY!!)
                 
+                // Important: Snapshot BEFORE baking the shape
+                saveState()
+
                 when (tool) {
                     Tool.SHAPE_LINE ->
                             DrawingAlgorithms.drawLine(startX!!, startY!!, commitX, commitY, size) { px: Int, py: Int ->
@@ -237,15 +233,39 @@ class PixelArtViewModel : ViewModel() {
                 }
             }
 
-            _projectState.update { it?.copy(previewLayer = null, version = it.version + 1) }
+            // Fast clear the persistent ghost layer
+            persistentPreviewBitmap?.eraseColor(Color.Transparent.toArgb())
+            _projectState.update { it?.copy(
+                previewLayer = it.previewLayer?.copy(isVisible = false),
+                version = it.version + 1 
+            ) }
+            
             startX = null
             startY = null
             lastX = null
             lastY = null
             lastValidDragX = null
             lastValidDragY = null
-            saveState()
             return
+        }
+
+        // 2. ACTION_DOWN: Initialization
+        if (!isDrag) {
+            startX = x
+            startY = y
+            lastX = x
+            lastY = y
+            lastValidDragX = x
+            lastValidDragY = y
+            
+            if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
+                // Ensure preview bitmap is clear and visible
+                persistentPreviewBitmap?.eraseColor(Color.Transparent.toArgb())
+                _projectState.update { it?.copy(
+                    previewLayer = it.previewLayer?.copy(isVisible = true),
+                    version = it.version + 1 
+                ) }
+            }
         }
 
         val isOutOfBounds = x !in 0 until state.width || y !in 0 until state.height
@@ -254,6 +274,7 @@ class PixelArtViewModel : ViewModel() {
         lastValidDragX = x
         lastValidDragY = y
 
+        // 3. ACTION_MOVE: Dynamic Rendering (Ghost Layer)
         when (tool) {
             Tool.PENCIL -> {
                 val colorToUse = _currentColor.value.toArgb()
@@ -275,6 +296,7 @@ class PixelArtViewModel : ViewModel() {
             Tool.FILL -> {
                 if (!isDrag) {
                     val targetPixel = bitmap.getPixel(x, y)
+                    saveState()
                     if (_toolSettings.value.contiguous) {
                         DrawingAlgorithms.scanlineFloodFill(bitmap, x, y, targetPixel, color)
                     } else {
@@ -303,15 +325,17 @@ class PixelArtViewModel : ViewModel() {
             }
             Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> {
                 if (isDrag) {
+                    // Start missing? Auto-capture (Robustness)
                     if (startX == null) {
                         startX = x
                         startY = y
-                        val previewBitmap = Bitmap.createBitmap(state.width, state.height, Bitmap.Config.ARGB_8888)
-                        val previewLayer = PixelLayer(id = "preview", name = "Preview", bitmap = previewBitmap)
-                        _projectState.update { it?.copy(previewLayer = previewLayer) }
+                        _projectState.update { it?.copy(
+                            previewLayer = it.previewLayer?.copy(isVisible = true)
+                        ) }
                     }
                     
-                    val previewBitmap = _projectState.value?.previewLayer?.bitmap ?: return
+                    val previewBitmap = persistentPreviewBitmap ?: return
+                    // Fast clear (Zero cost)
                     previewBitmap.eraseColor(Color.Transparent.toArgb())
 
                     when (tool) {
