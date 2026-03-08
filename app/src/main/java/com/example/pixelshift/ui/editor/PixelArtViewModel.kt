@@ -546,11 +546,181 @@ class PixelArtViewModel : ViewModel() {
     fun generateExportBitmap(scale: Int): Bitmap? {
         val state = _projectState.value ?: return null
         val w = state.width * scale; val h = state.height * scale
-        val destBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); val canvas = Canvas(destBitmap)
-        if (state.backgroundColor != Color.Transparent) canvas.drawColor(state.backgroundColor.toArgb())
-        val paint = Paint().apply { isAntiAlias = false; isFilterBitmap = false; isDither = false }
-        state.layers.forEach { layer -> if (layer.isVisible) { val src = android.graphics.Rect(0, 0, state.width, state.height); val dst = android.graphics.Rect(0, 0, w, h); canvas.drawBitmap(layer.bitmap, src, dst, paint) } }
+        val destBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(destBitmap)
+        
+        // Background
+        if (state.backgroundColor != Color.Transparent) {
+            canvas.drawColor(state.backgroundColor.toArgb())
+        }
+        
+        val paint = Paint().apply {
+            isAntiAlias = false
+            isFilterBitmap = false // CRITICAL: NEAREST NEIGHBOR FOR CRISP PIXELS
+            isDither = false
+        }
+        
+        // Matrix for upscaling
+        val matrix = android.graphics.Matrix()
+        matrix.postScale(scale.toFloat(), scale.toFloat())
+        
+        // --- REUSE RENDERING PIPELINE FOR EXPORT ---
+        val layerList = state.layers
+        for (i in layerList.indices.reversed()) {
+            val layer = layerList[i]
+            if (!layer.isVisible) continue
+
+            paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                paint.blendMode = when (layer.blendMode) {
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.BlendMode.OVERLAY
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.BlendMode.DARKEN
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.BlendMode.LIGHTEN
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                paint.xfermode = android.graphics.PorterDuffXfermode(
+                    when (layer.blendMode) {
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.PorterDuff.Mode.SRC_OVER
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.PorterDuff.Mode.MULTIPLY
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.PorterDuff.Mode.SCREEN
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.PorterDuff.Mode.OVERLAY
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.PorterDuff.Mode.DARKEN
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.PorterDuff.Mode.LIGHTEN
+                    }
+                )
+            }
+            canvas.drawBitmap(layer.bitmap, matrix, paint)
+        }
         return destBitmap
+    }
+
+    fun saveProject(outputStream: java.io.OutputStream) {
+        val state = _projectState.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val zipOut = java.util.zip.ZipOutputStream(outputStream)
+                
+                // 1. Create Manifest JSON
+                val manifest = JSONObject().apply {
+                    put("width", state.width)
+                    put("height", state.height)
+                    put("backgroundColor", state.backgroundColor.toArgb())
+                    
+                    val layersArray = org.json.JSONArray()
+                    state.layers.forEach { layer ->
+                        layersArray.put(JSONObject().apply {
+                            put("id", layer.id)
+                            put("name", layer.name)
+                            put("isVisible", layer.isVisible)
+                            put("opacity", layer.opacity.toDouble())
+                            put("blendMode", layer.blendMode.name)
+                            put("isLocked", layer.isLocked)
+                        })
+                    }
+                    put("layers", layersArray)
+                    
+                    val paletteArray = org.json.JSONArray()
+                    _palette.value.forEach { paletteArray.put(it.toArgb()) }
+                    put("palette", paletteArray)
+                }
+                
+                zipOut.putNextEntry(java.util.zip.ZipEntry("manifest.json"))
+                zipOut.write(manifest.toString().toByteArray())
+                zipOut.closeEntry()
+                
+                // 2. Save Layers as PNGs
+                state.layers.forEach { layer ->
+                    zipOut.putNextEntry(java.util.zip.ZipEntry("layers/${layer.id}.png"))
+                    layer.bitmap.compress(Bitmap.CompressFormat.PNG, 100, zipOut)
+                    zipOut.closeEntry()
+                }
+                
+                zipOut.finish()
+                zipOut.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun loadProject(inputStream: java.io.InputStream) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val zipIn = java.util.zip.ZipInputStream(inputStream)
+                var entry = zipIn.nextEntry
+                var manifestJson: JSONObject? = null
+                val layerBitmaps = mutableMapOf<String, Bitmap>()
+                
+                while (entry != null) {
+                    when {
+                        entry.name == "manifest.json" -> {
+                            val reader = java.io.BufferedReader(java.io.InputStreamReader(zipIn))
+                            manifestJson = JSONObject(reader.readText())
+                        }
+                        entry.name.startsWith("layers/") -> {
+                            val layerId = entry.name.substringAfter("layers/").substringBefore(".png")
+                            val bitmap = android.graphics.BitmapFactory.decodeStream(zipIn)
+                            if (bitmap != null) {
+                                layerBitmaps[layerId] = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                            }
+                        }
+                    }
+                    zipIn.closeEntry()
+                    entry = zipIn.nextEntry
+                }
+                zipIn.close()
+                
+                if (manifestJson != null) {
+                    val width = manifestJson.getInt("width")
+                    val height = manifestJson.getInt("height")
+                    val bgColor = Color(manifestJson.getInt("backgroundColor"))
+                    
+                    val layersArray = manifestJson.getJSONArray("layers")
+                    val newLayers = mutableListOf<PixelLayer>()
+                    for (i in 0 until layersArray.length()) {
+                        val lObj = layersArray.getJSONObject(i)
+                        val id = lObj.getString("id")
+                        val bitmap = layerBitmaps[id] ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        newLayers.add(PixelLayer(
+                            id = id,
+                            name = lObj.getString("name"),
+                            bitmap = bitmap,
+                            isVisible = lObj.getBoolean("isVisible"),
+                            opacity = lObj.getDouble("opacity").toFloat(),
+                            blendMode = com.example.pixelshift.ui.editor.common.LayerBlendMode.valueOf(lObj.getString("blendMode")),
+                            isLocked = lObj.optBoolean("isLocked", false)
+                        ))
+                    }
+                    
+                    val palArray = manifestJson.getJSONArray("palette")
+                    val newPalette = mutableListOf<Color>()
+                    for (i in 0 until palArray.length()) {
+                        newPalette.add(Color(palArray.getInt(i)))
+                    }
+                    
+                    withContext(Dispatchers.Main) {
+                        _palette.value = newPalette
+                        _projectState.value = ProjectState(
+                            width = width,
+                            height = height,
+                            layers = newLayers,
+                            activeLayerId = newLayers.firstOrNull()?.id ?: "",
+                            backgroundColor = bgColor,
+                            version = 0L
+                        )
+                        undoStack.clear()
+                        redoStack.clear()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     private fun drawStroke(x: Int, y: Int, color: Int, size: Int, isDrag: Boolean, state: ProjectState, bitmap: Bitmap) {

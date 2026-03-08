@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
@@ -72,6 +73,26 @@ fun PixelArtEditorScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val viewportState = rememberViewportState()
+
+    val saveProjectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri?.let {
+            context.contentResolver.openOutputStream(it)?.use { stream ->
+                viewModel.saveProject(stream)
+            }
+        }
+    }
+
+    val loadProjectLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            context.contentResolver.openInputStream(it)?.use { stream ->
+                viewModel.loadProject(stream)
+            }
+        }
+    }
     
     val referenceImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -119,6 +140,12 @@ fun PixelArtEditorScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = { loadProjectLauncher.launch(arrayOf("application/octet-stream")) }) {
+                                Icon(Icons.Default.Folder, contentDescription = "Load Project")
+                            }
+                            IconButton(onClick = { saveProjectLauncher.launch("my_drawing.pxl") }) {
+                                Icon(Icons.Default.Save, contentDescription = "Save Project")
+                            }
                             IconButton(
                                 onClick = { viewModel.undo() },
                                 enabled = canUndo
