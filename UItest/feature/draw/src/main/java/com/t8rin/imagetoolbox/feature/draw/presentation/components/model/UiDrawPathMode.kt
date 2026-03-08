@@ -116,6 +116,11 @@ sealed class UiDrawPathMode : Parcelable {
     ) : UiDrawPathMode()
 
     @Parcelize
+    data class GlobalReplace(
+        val tolerance: Float = 0.25f
+    ) : UiDrawPathMode()
+
+    @Parcelize
     data class Spray(
         val density: Int = 50,
         val pixelSize: Float = 1f,
@@ -196,6 +201,8 @@ fun DrawPathMode.toUi(): UiDrawPathMode = when (this) {
 
     is DrawPathMode.FloodFill -> UiDrawPathMode.FloodFill(tolerance)
 
+    is DrawPathMode.GlobalReplace -> UiDrawPathMode.GlobalReplace(tolerance)
+
     is DrawPathMode.Spray -> UiDrawPathMode.Spray(
         density = density,
         pixelSize = pixelSize,
@@ -275,6 +282,8 @@ fun UiDrawPathMode.toDomain(): DrawPathMode = when (this) {
     UiDrawPathMode.Triangle -> DrawPathMode.Triangle
 
     is UiDrawPathMode.FloodFill -> DrawPathMode.FloodFill(tolerance)
+
+    is UiDrawPathMode.GlobalReplace -> DrawPathMode.GlobalReplace(tolerance)
 
     is UiDrawPathMode.Spray -> DrawPathMode.Spray(density)
 }

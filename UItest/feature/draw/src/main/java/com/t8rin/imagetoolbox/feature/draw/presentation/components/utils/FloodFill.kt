@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asComposePath
+import java.util.BitSet
 import java.util.LinkedList
 import java.util.Queue
 import kotlin.math.roundToInt
@@ -36,9 +37,6 @@ internal class FloodFill(image: Bitmap) {
     private val height: Int = image.height
     private val pixels: IntArray = IntArray(width * height)
 
-    private lateinit var pixelsChecked: BooleanArray
-    private lateinit var ranges: Queue<FloodFillRange>
-
     private var tolerance = 0
 
     private var startColorRed = 0
@@ -50,123 +48,154 @@ internal class FloodFill(image: Bitmap) {
         image.getPixels(pixels, 0, width, 0, 0, width, height)
     }
 
-    private fun prepare() {
-        // Called before starting flood-fill
-        pixelsChecked = BooleanArray(pixels.size)
-        ranges = LinkedList()
-    }
-
-    //  Fills the specified point on the bitmap with the currently selected fill color.
-    //  int x, int y: The starting coordinates for the fill
+    /**
+     * Optimized Scanline Flood Fill algorithm.
+     * Reduces stack/queue usage by processing horizontal segments.
+     */
     fun performFloodFill(
         x: Int,
         y: Int,
         tolerance: Float
     ): Path? {
+        if (x !in 0 until width || y !in 0 until height) return null
+
         path.rewind()
         this.tolerance = (tolerance * 255).roundToInt().coerceIn(0, 255)
-        // Setup
-        prepare()
 
-        // Get starting color.
-        val startPixel = pixels.getOrNull(width * y + x) ?: return null
+        val startPixel = pixels[y * width + x]
+        startColorAlpha = Color.alpha(startPixel)
         startColorRed = Color.red(startPixel)
         startColorGreen = Color.green(startPixel)
         startColorBlue = Color.blue(startPixel)
+
+        val visited = BitSet(width * height)
+        val queue: Queue<FloodFillRange> = LinkedList()
+
+        // Initial scanline
+        findRangeAndPush(x, y, visited, queue)
+
+        while (queue.isNotEmpty()) {
+            val range = queue.poll()!!
+            val currY = range.Y
+
+            // Scan above and below
+            if (currY > 0) scanRow(range.startX, range.endX, currY - 1, visited, queue)
+            if (currY < height - 1) scanRow(range.startX, range.endX, currY + 1, visited, queue)
+        }
+
+        return path
+    }
+
+    /**
+     * Global Color Replace algorithm.
+     * Iterates through all pixels and adds matching segments to the Path.
+     */
+    fun performGlobalReplace(
+        x: Int,
+        y: Int,
+        tolerance: Float
+    ): Path? {
+        if (x !in 0 until width || y !in 0 until height) return null
+
+        path.rewind()
+        this.tolerance = (tolerance * 255).roundToInt().coerceIn(0, 255)
+
+        val startPixel = pixels[y * width + x]
         startColorAlpha = Color.alpha(startPixel)
+        startColorRed = Color.red(startPixel)
+        startColorGreen = Color.green(startPixel)
+        startColorBlue = Color.blue(startPixel)
 
-        // Do first call to flood-fill.
-        linearFill(x, y)
-
-        // Call flood-fill routine while flood-fill ranges still exist on the queue
-        var range: FloodFillRange
-        while (ranges.isNotEmpty()) {
-            // Get Next Range Off the Queue
-            range = ranges.remove()
-
-            // Check Above and Below Each Pixel in the flood-fill Range
-            var downPxIdx = width * (range.Y + 1) + range.startX
-            var upPxIdx = width * (range.Y - 1) + range.startX
-            val upY = range.Y - 1 // so we can pass the y coordinate by ref
-            val downY = range.Y + 1
-            for (i in range.startX..range.endX) {
-                // Start Fill Upwards
-                // if we're not above the top of the bitmap and the pixel above this one is within the color tolerance
-                if (range.Y > 0 && !pixelsChecked[upPxIdx] && isPixelColorWithinTolerance(upPxIdx)) {
-                    linearFill(i, upY)
+        for (currY in 0 until height) {
+            var currX = 0
+            while (currX < width) {
+                val idx = currY * width + currX
+                if (isPixelColorWithinTolerance(idx)) {
+                    val startX = currX
+                    while (currX < width && isPixelColorWithinTolerance(currY * width + currX)) {
+                        currX++
+                    }
+                    // Add segment to path
+                    addSegmentToPath(startX, currX - 1, currY)
+                } else {
+                    currX++
                 }
-
-                // Start Fill Downwards
-                // if we're not below the bottom of the bitmap and the pixel below this one is within the color tolerance
-                if (
-                    range.Y < height - 1 && !pixelsChecked[downPxIdx]
-                    && isPixelColorWithinTolerance(downPxIdx)
-                ) {
-                    linearFill(i, downY)
-                }
-                downPxIdx++
-                upPxIdx++
             }
         }
 
         return path
     }
 
-    //  Finds the furthermost left and right boundaries of the fill area
-    //  on a given y coordinate, starting from a given x coordinate, filling as it goes.
-    //  Adds the resulting horizontal range to the queue of flood-fill ranges,
-    //  to be processed in the main loop.
-    //
-    //  int x, int y: The starting coordinates
-    private fun linearFill(x: Int, y: Int) {
-        // Find Left Edge of Color Area
-        var lFillLoc = x // the location to check/fill on the left
-        var pxIdx = width * y + x
-        path.moveTo(x.toFloat(), y.toFloat())
-        while (true) {
-            pixelsChecked[pxIdx] = true
-            lFillLoc--
-            pxIdx--
-            // exit loop if we're at edge of bitmap or color area
-            if (lFillLoc < 0 || pixelsChecked[pxIdx] || !isPixelColorWithinTolerance(pxIdx)) {
-                break
+    private fun scanRow(
+        startX: Int,
+        endX: Int,
+        y: Int,
+        visited: BitSet,
+        queue: Queue<FloodFillRange>
+    ) {
+        var currX = startX
+        while (currX <= endX) {
+            val idx = y * width + currX
+            if (!visited.get(idx) && isPixelColorWithinTolerance(idx)) {
+                // Found a new segment, expand it and push to queue
+                findRangeAndPush(currX, y, visited, queue)
+                // Skip the rest of this segment in the current row scan
+                // The findRangeAndPush will have marked it all as visited or we can find its end
+                // To be safe and efficient, we find where this segment ends in the current row's bounds
+                while (currX <= endX && isPixelColorWithinTolerance(y * width + currX)) {
+                    currX++
+                }
+            } else {
+                currX++
             }
         }
-        vectorFill(pxIdx + 1)
-        lFillLoc++
+    }
 
-        // Find Right Edge of Color Area
-        var rFillLoc = x // the location to check/fill on the left
-        pxIdx = width * y + x
-        while (true) {
-            pixelsChecked[pxIdx] = true
-            rFillLoc++
-            pxIdx++
-            if (rFillLoc >= width || pixelsChecked[pxIdx] || !isPixelColorWithinTolerance(pxIdx)) {
-                break
-            }
+    private fun findRangeAndPush(
+        x: Int,
+        y: Int,
+        visited: BitSet,
+        queue: Queue<FloodFillRange>
+    ) {
+        var left = x
+        var idx = y * width + left
+        while (left >= 0 && !visited.get(idx) && isPixelColorWithinTolerance(idx)) {
+            visited.set(idx)
+            left--
+            idx--
         }
-        vectorFill(pxIdx - 1)
-        rFillLoc--
+        left++
 
-        // add range to queue
-        val r = FloodFillRange(lFillLoc, rFillLoc, y)
-        ranges.offer(r)
+        var right = x + 1
+        idx = y * width + right
+        while (right < width && !visited.get(idx) && isPixelColorWithinTolerance(idx)) {
+            visited.set(idx)
+            right++
+            idx++
+        }
+        right--
+
+        addSegmentToPath(left, right, y)
+        queue.offer(FloodFillRange(left, right, y))
     }
 
-    // vector fill pixels with color
-    private fun vectorFill(pxIndex: Int) {
-        val x = (pxIndex % width).toFloat()
-        val y = (pxIndex - x) / width
-        path.lineTo(x, y)
+    private fun addSegmentToPath(startX: Int, endX: Int, y: Int) {
+        // We use 0.5 offset to target the center of the pixel
+        // Stroke width should be 1px
+        path.moveTo(startX.toFloat(), y.toFloat() + 0.5f)
+        path.lineTo(endX.toFloat() + 1f, y.toFloat() + 0.5f)
     }
 
-    // Sees if a pixel is within the color tolerance range.
     private fun isPixelColorWithinTolerance(px: Int): Boolean {
-        val alpha = pixels[px] ushr 24 and 0xff
-        val red = pixels[px] ushr 16 and 0xff
-        val green = pixels[px] ushr 8 and 0xff
-        val blue = pixels[px] and 0xff
+        val color = pixels[px]
+        val alpha = color ushr 24 and 0xff
+        val red = color ushr 16 and 0xff
+        val green = color ushr 8 and 0xff
+        val blue = color and 0xff
+
+        if (tolerance == 0) {
+            return alpha == startColorAlpha && red == startColorRed && green == startColorGreen && blue == startColorBlue
+        }
 
         return alpha >= startColorAlpha - tolerance && alpha <= startColorAlpha + tolerance &&
                 red >= startColorRed - tolerance && red <= startColorRed + tolerance &&
@@ -174,16 +203,34 @@ internal class FloodFill(image: Bitmap) {
                 blue >= startColorBlue - tolerance && blue <= startColorBlue + tolerance
     }
 
-    //  Represents a linear range to be filled and branched from.
-    private inner class FloodFillRange(var startX: Int, var endX: Int, var Y: Int)
+    private inner class FloodFillRange(val startX: Int, val endX: Int, val Y: Int)
 }
 
 fun ImageBitmap.floodFill(
     offset: Offset,
     tolerance: Float
 ): ComposePath? = FloodFill(
-    asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
+    asAndroidBitmap().let {
+        if (it.config != Bitmap.Config.ARGB_8888) {
+            it.copy(Bitmap.Config.ARGB_8888, false)
+        } else it
+    }
 ).performFloodFill(
+    x = offset.x.roundToInt(),
+    y = offset.y.roundToInt(),
+    tolerance = tolerance
+)?.asComposePath()
+
+fun ImageBitmap.globalReplace(
+    offset: Offset,
+    tolerance: Float
+): ComposePath? = FloodFill(
+    asAndroidBitmap().let {
+        if (it.config != Bitmap.Config.ARGB_8888) {
+            it.copy(Bitmap.Config.ARGB_8888, false)
+        } else it
+    }
+).performGlobalReplace(
     x = offset.x.roundToInt(),
     y = offset.y.roundToInt(),
     tolerance = tolerance

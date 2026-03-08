@@ -74,6 +74,7 @@ import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.copy
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.drawRepeatedImageOnPath
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.drawRepeatedTextOnPath
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.floodFill
+import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.globalReplace
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.handle
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.overlay
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.utils.pointerDrawObserver
@@ -480,8 +481,17 @@ fun BitmapDrawer(
                                                 tolerance = tolerance
                                             )
                                             ?.let { drawPath = it }
+                                    },
+                                    onGlobalReplace = { tolerance ->
+                                        outputImage
+                                            .globalReplace(
+                                                offset = currentDrawPosition,
+                                                tolerance = tolerance
+                                            )
+                                            ?.let { drawPath = it }
                                     }
-                                )
+                                    )
+                                    }
 
                                 onAddPath(
                                     UiPathPaint(

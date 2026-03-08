@@ -400,7 +400,8 @@ data class PathHelper(
         currentDrawPath: Path? = null,
         onDrawFreeArrow: DrawArrowsScope.() -> Unit = {},
         onBaseDraw: () -> Unit = {},
-        onFloodFill: (tolerance: Float) -> Unit = {}
+        onFloodFill: (tolerance: Float) -> Unit = {},
+        onGlobalReplace: (tolerance: Float) -> Unit = {}
     ) {
         if (!isEraserOn && drawMode !is DrawMode.Warp) {
             when (drawPathMode) {
@@ -465,6 +466,8 @@ data class PathHelper(
                 DrawPathMode.Lasso -> onBaseDraw()
 
                 is DrawPathMode.FloodFill -> onFloodFill(drawPathMode.tolerance)
+
+                is DrawPathMode.GlobalReplace -> onGlobalReplace(drawPathMode.tolerance)
 
                 is DrawPathMode.Spray -> {
                     currentDrawPath?.let {

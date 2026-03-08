@@ -1827,6 +1827,8 @@
     <string name="launcher_mode">启动器模式</string>
     <string name="flood_fill_sub">用所选画笔和样式填充指定区域</string>
     <string name="flood_fill">油漆桶填充</string>
+    <string name="global_replace">全局替换</string>
+    <string name="global_replace_sub">将图像中所有特定颜色的像素替换为当前画笔颜色</string>
     <string name="spray">喷雾</string>
     <string name="spray_sub">绘制涂鸦风格路径</string>
     <string name="square_particles">方形粒子</string>

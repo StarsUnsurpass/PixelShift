@@ -106,7 +106,15 @@ sealed class DrawPathMode(
         val tolerance: Float = 0.25f
     ) : DrawPathMode(17) {
         companion object {
-            val StrokeSize = 2f.pt
+            val StrokeSize = 1f.pt
+        }
+    }
+
+    data class GlobalReplace(
+        val tolerance: Float = 0.25f
+    ) : DrawPathMode(19) {
+        companion object {
+            val StrokeSize = 1f.pt
         }
     }
 
@@ -117,7 +125,7 @@ sealed class DrawPathMode(
     ) : DrawPathMode(18)
 
     val canChangeStrokeWidth: Boolean
-        get() = this !is FloodFill && (!isFilled || this is Spray)
+        get() = this !is FloodFill && this !is GlobalReplace && (!isFilled || this is Spray)
 
     val isFilled: Boolean
         get() = filled.any { this::class.isInstance(it) }
@@ -130,6 +138,7 @@ sealed class DrawPathMode(
             listOf(
                 Free,
                 FloodFill(),
+                GlobalReplace(),
                 Spray(),
                 Line,
                 PointingArrow(),
@@ -162,6 +171,7 @@ sealed class DrawPathMode(
         canvasSize: IntegerSize
     ): Float = when (this) {
         is FloodFill -> FloodFill.StrokeSize.toPx(canvasSize)
+        is GlobalReplace -> GlobalReplace.StrokeSize.toPx(canvasSize)
         else -> strokeWidth.toPx(canvasSize)
     }
 }
@@ -183,5 +193,6 @@ private val sharp = listOf(
     Oval,
     Lasso,
     FloodFill(),
+    GlobalReplace(),
     Spray()
 )
