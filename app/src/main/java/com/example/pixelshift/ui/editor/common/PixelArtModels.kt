@@ -3,13 +3,30 @@ package com.example.pixelshift.ui.editor.common
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 
+/**
+ * Supported Blend Modes for professional layer compositing.
+ */
+enum class LayerBlendMode {
+    NORMAL,      // SRC_OVER
+    MULTIPLY,    // Multiply colors
+    SCREEN,      // Screen colors
+    OVERLAY,     // Overlay colors
+    DARKEN,      // Darken colors
+    LIGHTEN      // Lighten colors
+}
+
+/**
+ * PixelLayer is the core Entity of the layer system.
+ * It follows the principle of Non-Destructive Editing.
+ */
 data class PixelLayer(
         val id: String = java.util.UUID.randomUUID().toString(),
         val name: String,
         val bitmap: Bitmap,
-        var isVisible: Boolean = true,
-        var opacity: Float = 1f,
-        var isLocked: Boolean = false
+        val isVisible: Boolean = true,
+        val opacity: Float = 1f,
+        val isLocked: Boolean = false,
+        val blendMode: LayerBlendMode = LayerBlendMode.NORMAL
 )
 
 enum class Tool {

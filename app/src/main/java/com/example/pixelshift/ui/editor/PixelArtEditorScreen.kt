@@ -241,7 +241,24 @@ fun PixelArtEditorScreen(
                         onLayerVisibilityChanged = { id, visible ->
                             viewModel.toggleLayerVisibility(id, visible)
                         },
-                        onLayerOpacityChanged = { _, _ -> /* TODO */ },
+                        onLayerOpacityChanged = { id, opacity ->
+                            viewModel.setLayerOpacity(id, opacity)
+                        },
+                        onLayerBlendModeChanged = { id, mode ->
+                            viewModel.setLayerBlendMode(id, mode)
+                        },
+                        onDuplicateLayer = { id ->
+                            viewModel.duplicateLayer(id)
+                        },
+                        onMergeDown = { id ->
+                            viewModel.mergeDown(id)
+                        },
+                        onReorder = { from, to ->
+                            viewModel.swapLayers(from, to)
+                        },
+                        onFinalizeReorder = {
+                            viewModel.finalizeReorder()
+                        },
                         onAddLayer = { viewModel.addLayer() },
                         onDeleteLayer = { viewModel.removeLayer(it) },
                         onClose = { showLayerSheet = false }

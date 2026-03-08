@@ -293,12 +293,135 @@ class PixelArtViewModel : ViewModel() {
 
     fun toggleLayerVisibility(layerId: String, isVisible: Boolean) {
         val state = _projectState.value ?: return
-        val layer = state.layers.find { it.id == layerId } ?: return
-        layer.isVisible = isVisible
-        _projectState.update { it?.copy(layers = it.layers.toList(), version = it.version + 1) }
+        val newLayers = state.layers.map { 
+            if (it.id == layerId) it.copy(isVisible = isVisible) else it
+        }
+        _projectState.update { it?.copy(layers = newLayers, version = it.version + 1) }
     }
 
-    fun selectLayer(layerId: String) { _projectState.update { it?.copy(activeLayerId = layerId, version = it.version + 1) } }
+    fun setLayerOpacity(layerId: String, opacity: Float) {
+        val state = _projectState.value ?: return
+        val newLayers = state.layers.map { 
+            if (it.id == layerId) it.copy(opacity = opacity) else it
+        }
+        _projectState.update { it?.copy(layers = newLayers, version = it.version + 1) }
+    }
+
+    fun setLayerBlendMode(layerId: String, blendMode: com.example.pixelshift.ui.editor.common.LayerBlendMode) {
+        val state = _projectState.value ?: return
+        val newLayers = state.layers.map { 
+            if (it.id == layerId) it.copy(blendMode = blendMode) else it
+        }
+        _projectState.update { it?.copy(layers = newLayers, version = it.version + 1) }
+    }
+
+    fun duplicateLayer(layerId: String) {
+        val state = _projectState.value ?: return
+        val layers = state.layers
+        val index = layers.indexOfFirst { it.id == layerId }
+        if (index == -1) return
+        
+        saveState() // Snapshot before duplication
+        
+        val original = layers[index]
+        // DEEP COPY: Creating a new physical memory space for the bitmap
+        val config = original.bitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888
+        val newBitmap = original.bitmap.copy(config, true)
+        val duplicatedLayer = original.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            name = "${original.name} (Copy)",
+            bitmap = newBitmap
+        )
+        
+        val newLayers = layers.toMutableList().apply { add(index, duplicatedLayer) }
+        _projectState.update { it?.copy(layers = newLayers, activeLayerId = duplicatedLayer.id, version = it.version + 1) }
+    }
+
+    fun mergeDown(layerId: String) {
+        val state = _projectState.value ?: return
+        val layers = state.layers
+        val index = layers.indexOfFirst { it.id == layerId }
+        
+        // Cannot merge if it's the bottom-most layer (index = size - 1)
+        if (index == -1 || index >= layers.size - 1) return
+        
+        saveState() // Snapshot before destructive merge
+        
+        val upperLayer = layers[index]
+        val lowerLayer = layers[index + 1]
+        
+        // --- ATOMIC MERGE TRANSACTION ---
+        // 1. Connect Skia engine to the Lower Layer's memory
+        val canvas = android.graphics.Canvas(lowerLayer.bitmap)
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = false
+            // 2. Extract visual states (Alpha)
+            alpha = (upperLayer.opacity * 255).toInt().coerceIn(0, 255)
+            
+            // 3. Extract BlendMode
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                blendMode = when (upperLayer.blendMode) {
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.BlendMode.OVERLAY
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.BlendMode.DARKEN
+                    com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.BlendMode.LIGHTEN
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                xfermode = android.graphics.PorterDuffXfermode(
+                    when (upperLayer.blendMode) {
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.PorterDuff.Mode.SRC_OVER
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.PorterDuff.Mode.MULTIPLY
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.PorterDuff.Mode.SCREEN
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.PorterDuff.Mode.OVERLAY
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.PorterDuff.Mode.DARKEN
+                        com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.PorterDuff.Mode.LIGHTEN
+                    }
+                )
+            }
+        }
+        
+        // 4. Physical "Baking" of pixels
+        canvas.drawBitmap(upperLayer.bitmap, 0f, 0f, paint)
+        
+        // 5. State Cleanup: Remove upper layer and fix pointer
+        val newLayers = layers.toMutableList().apply { removeAt(index) }
+        _projectState.update { it?.copy(layers = newLayers, activeLayerId = lowerLayer.id, version = it.version + 1) }
+    }
+
+    fun swapLayers(fromIndex: Int, toIndex: Int) {
+        val state = _projectState.value ?: return
+        val layers = state.layers.toMutableList()
+        if (fromIndex !in layers.indices || toIndex !in layers.indices) return
+        
+        // --- HIGH PERFORMANCE SWAP ---
+        // We do NOT saveState() here to avoid clogging the Undo stack 
+        // with every single intermediate step of the drag.
+        java.util.Collections.swap(layers, fromIndex, toIndex)
+        
+        _projectState.update { it?.copy(layers = layers, version = it.version + 1) }
+    }
+
+    fun finalizeReorder() {
+        // --- SILENT UNDO SETTLEMENT ---
+        // Now that the user has released their finger, we commit the final
+        // permutation of layers as a single atomic history event.
+        saveState()
+    }
+
+    fun toggleLayerLock(layerId: String, isLocked: Boolean) {
+        val state = _projectState.value ?: return
+        val newLayers = state.layers.map { 
+            if (it.id == layerId) it.copy(isLocked = isLocked) else it
+        }
+        _projectState.update { it?.copy(layers = newLayers, version = it.version + 1) }
+    }
+
+    fun selectLayer(layerId: String) { 
+        _projectState.update { it?.copy(activeLayerId = layerId, version = it.version + 1) } 
+    }
 
     fun generateExportBitmap(scale: Int): Bitmap? {
         val state = _projectState.value ?: return null

@@ -221,13 +221,64 @@ fun PixelCanvas(
             }
 
             drawIntoCanvas { canvas ->
-                val paint = Paint().apply { isAntiAlias = false; isFilterBitmap = false; isDither = false }
-                projectState.layers.asReversed().forEach { layer ->
-                    if (layer.isVisible) {
-                        paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                        canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
-                    }
+                val paint = Paint().apply { 
+                    isAntiAlias = false
+                    isFilterBitmap = false
+                    isDither = false 
                 }
+                
+                // --- RENDERING PIPELINE: PAINTER'S ALGORITHM ---
+                // Drawing from Bottom to Top to handle transparency correctly.
+                // In our model, index 0 is the TOP layer (last added).
+                // So we iterate from the end of the list down to 0.
+                val layerList = projectState.layers
+                for (i in layerList.indices.reversed()) {
+                    val layer = layerList[i]
+                    
+                    // 1. STATE INTERCEPTION: Visibility (The Early Exit)
+                    // If hidden, O(1) prune. No GPU Call issued.
+                    if (!layer.isVisible) continue
+
+                    // 2. STATE INTERCEPTION: Alpha Modulation
+                    // Non-destructive opacity application.
+                    paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+
+                    // 3. STATE INTERCEPTION: Blend Mode Injection
+                    // Apply different mathematical composition rules to the GPU pipeline.
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        paint.blendMode = when (layer.blendMode) {
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.BlendMode.OVERLAY
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.BlendMode.DARKEN
+                            com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.BlendMode.LIGHTEN
+                        }
+                    } else {
+                        @Suppress("DEPRECATION")
+                        paint.xfermode = android.graphics.PorterDuffXfermode(
+                            when (layer.blendMode) {
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.NORMAL -> android.graphics.PorterDuff.Mode.SRC_OVER
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.MULTIPLY -> android.graphics.PorterDuff.Mode.MULTIPLY
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.SCREEN -> android.graphics.PorterDuff.Mode.SCREEN
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.OVERLAY -> android.graphics.PorterDuff.Mode.OVERLAY
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.DARKEN -> android.graphics.PorterDuff.Mode.DARKEN
+                                com.example.pixelshift.ui.editor.common.LayerBlendMode.LIGHTEN -> android.graphics.PorterDuff.Mode.LIGHTEN
+                            }
+                        )
+                    }
+
+                    // 4. FINAL COMPOSITION
+                    // Hardware accelerated texture mapping.
+                    canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
+                }
+                
+                // Selection Layer and Preview Layer (always Normal Blend Mode)
+                paint.reset()
+                paint.isAntiAlias = false
+                paint.isFilterBitmap = false
+                paint.isDither = false 
+                
                 projectState.selection?.let { selection ->
                     val selMatrix = viewportState.getMatrix().apply { preTranslate(selection.x.toFloat(), selection.y.toFloat()) }
                     canvas.nativeCanvas.drawBitmap(selection.bitmap as Bitmap, selMatrix, paint)
