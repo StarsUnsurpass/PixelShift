@@ -16,6 +16,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class PixelArtViewModel : ViewModel() {
 
@@ -52,6 +61,85 @@ class PixelArtViewModel : ViewModel() {
                     )
             )
     val palette: StateFlow<List<Color>> = _palette.asStateFlow()
+
+    fun addColorToPalette(color: Color) {
+        if (!_palette.value.contains(color)) {
+            _palette.update { it + color }
+        }
+    }
+
+    fun removeColorFromPalette(index: Int) {
+        if (index in _palette.value.indices) {
+            _palette.update { it.toMutableList().apply { removeAt(index) } }
+        }
+    }
+
+    fun swapPaletteColors(fromIndex: Int, toIndex: Int) {
+        if (fromIndex in _palette.value.indices && toIndex in _palette.value.indices) {
+            _palette.update {
+                val list = it.toMutableList()
+                java.util.Collections.swap(list, fromIndex, toIndex)
+                list
+            }
+        }
+    }
+
+    fun loadPreset(preset: String) {
+        val colors = when (preset.lowercase()) {
+            "gameboy" -> listOf(Color(0xFF0f380f), Color(0xFF306230), Color(0xFF8bac0f), Color(0xFF9bbc0f))
+            "pico-8" -> listOf(
+                Color(0xFF000000), Color(0xFF1D2B53), Color(0xFF7E2553), Color(0xFF008751),
+                Color(0xFFAB5236), Color(0xFF5F574F), Color(0xFFC2C3C7), Color(0xFFFFF1E8),
+                Color(0xFFFF004D), Color(0xFFFFA300), Color(0xFFFFEC27), Color(0xFF00E436),
+                Color(0xFF29ADFF), Color(0xFF83769C), Color(0xFFFF77A8), Color(0xFFFFCCAA)
+            )
+            "nes" -> listOf(
+                Color(0xFF7C7C7C), Color(0xFF0000FC), Color(0xFF0000BC), Color(0xFF4428BC),
+                Color(0xFF940084), Color(0xFFA80020), Color(0xFFA81000), Color(0xFF881400),
+                Color(0xFF503000), Color(0xFF007800), Color(0xFF006800), Color(0xFF005800),
+                Color(0xFF004058), Color(0xFF000000)
+            )
+            else -> return
+        }
+        _palette.value = colors
+    }
+
+    fun fetchLospecPalette(slug: String) {
+        viewModelScope.launch {
+            val fetchedColors = withContext(Dispatchers.IO) {
+                try {
+                    val url = URL("https://lospec.com/palette-list/$slug.json")
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+
+                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                        val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                        val response = reader.readText()
+                        reader.close()
+
+                        val jsonObject = JSONObject(response)
+                        val colorsArray = jsonObject.getJSONArray("colors")
+                        val newColors = mutableListOf<Color>()
+                        for (i in 0 until colorsArray.length()) {
+                            val hex = colorsArray.getString(i)
+                            newColors.add(Color(android.graphics.Color.parseColor("#$hex")))
+                        }
+                        newColors
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
+                }
+            }
+            if (fetchedColors != null) {
+                _palette.value = fetchedColors
+            }
+        }
+    }
 
     private val _currentColor = MutableStateFlow(Color.Black)
     val currentColor: StateFlow<Color> = _currentColor.asStateFlow()

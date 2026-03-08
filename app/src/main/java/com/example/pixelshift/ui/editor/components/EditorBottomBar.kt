@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +40,10 @@ import androidx.compose.ui.unit.sp
 import com.example.pixelshift.ui.editor.common.Tool
 import com.example.pixelshift.ui.editor.common.ToolSettings
 
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.border
+
 @Composable
 fun EditorBottomBar(
         currentTool: Tool,
@@ -46,7 +51,9 @@ fun EditorBottomBar(
         toolSettings: ToolSettings,
         onToggleShapeFilled: () -> Unit,
         currentColor: Color,
-        onPaletteClick: () -> Unit
+        onPaletteClick: () -> Unit,
+        palette: List<Color>,
+        onPaletteColorSelected: (Color) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -139,12 +146,13 @@ fun EditorBottomBar(
                     onClick = { onToolSelected(Tool.MOVE) }
             )
 
-            // Color Preview
+            // Color Preview (Main Selector)
             Box(
                     modifier =
                             Modifier.size(40.dp)
                                     .clip(CircleShape)
                                     .background(currentColor)
+                                    .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
                                     .clickable { onPaletteClick() }
                                     .then(
                                             if (currentColor == Color.Transparent ||
@@ -158,6 +166,32 @@ fun EditorBottomBar(
                 if (currentColor == Color.Transparent) {
                     Text("T", color = Color.Gray, fontSize = 12.sp)
                 }
+            }
+        }
+        
+        // --- THE ACTIVE PALETTE ---
+        // Zero-latency UI with Spacer for extreme performance
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(palette) { color ->
+                val isSelected = color == currentColor
+                Spacer(
+                    modifier = Modifier
+                        .size(if (isSelected) 32.dp else 24.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(color)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                            shape = MaterialTheme.shapes.small
+                        )
+                        .clickable { onPaletteColorSelected(color) }
+                )
             }
         }
     }

@@ -143,7 +143,9 @@ fun PixelArtEditorScreen(
                             }
                         },
                         currentColor = currentColor,
-                        onPaletteClick = { showColorPickerSheet = true }
+                        onPaletteClick = { showColorPickerSheet = true },
+                        palette = viewModel.palette.collectAsState().value,
+                        onPaletteColorSelected = { viewModel.setColor(it) }
                 )
             }
     ) { innerPadding ->
@@ -304,6 +306,8 @@ fun PixelArtEditorScreen(
                             viewModel.setColor(it)
                             showColorPickerSheet = false
                         },
+                        onLoadPreset = { viewModel.loadPreset(it) },
+                        onFetchLospec = { viewModel.fetchLospecPalette(it) },
                         onClose = { showColorPickerSheet = false }
                 )
             }
