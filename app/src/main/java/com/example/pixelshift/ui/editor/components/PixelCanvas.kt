@@ -1,20 +1,17 @@
 package com.example.pixelshift.ui.editor.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.example.pixelshift.ui.editor.common.ProjectState
@@ -24,15 +21,10 @@ import android.view.ViewConfiguration
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.*
 
 @Composable
 fun PixelCanvas(
@@ -52,131 +44,142 @@ fun PixelCanvas(
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val touchSlop = remember { ViewConfiguration.get(context).scaledTouchSlop.toFloat() }
-    
-    val checkSizePx = with(density) { 8.dp.toPx() }
     val maxScale = remember(density.density) { density.density * 40f }
 
     val gridLinesBuffer = remember { FloatArray(2000) }
     val gridPaint = remember { 
         Paint().apply {
-            isAntiAlias = false
-            strokeWidth = 0f 
-            style = Paint.Style.STROKE
+            isAntiAlias = false; strokeWidth = 0f; style = Paint.Style.STROKE
         }
     }
 
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val screenHeightPx = with(density) { maxHeight.toPx() }
-
         var isInitialized by remember(projectState.id) { mutableStateOf(false) }
         val projectWidth = projectState.width
         val projectHeight = projectState.height
-
-        var isViewportMode by remember { mutableStateOf(false) }
-        var isLongPressMode by remember { mutableStateOf(false) }
 
         LaunchedEffect(projectState.id, screenWidthPx, screenHeightPx) {
             if (!isInitialized && screenWidthPx > 0 && screenHeightPx > 0) {
                 val scaleX = (screenWidthPx * 0.8f) / projectWidth
                 val scaleY = (screenHeightPx * 0.8f) / projectHeight
                 val initialScale = minOf(scaleX, scaleY).coerceAtLeast(1f)
-                val initialOffsetX = (screenWidthPx - projectWidth * initialScale) / 2f
-                val initialOffsetY = (screenHeightPx - projectHeight * initialScale) / 2f
-                viewportState.set(initialScale, initialOffsetX, initialOffsetY)
+                viewportState.set(initialScale, (screenWidthPx - projectWidth * initialScale) / 2f, (screenHeightPx - projectHeight * initialScale) / 2f)
                 isInitialized = true
             }
         }
 
         Canvas(
-            modifier =
-                Modifier.fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, _ ->
-                            if (isLongPressMode) return@detectTransformGestures
-                            isViewportMode = true
-                            viewportState.zoom(zoom, centroid.x, centroid.y, maxScale = maxScale)
-                            viewportState.pan(pan.x, pan.y)
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown()
-                            var isCanceled = false
-                            isViewportMode = false
-                            
-                            // 1. Long Press Hijacking Window (300ms)
-                            val longPressTriggered = withTimeoutOrNull(300L) {
-                                var totalDist = 0f
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.size > 1) {
-                                        isViewportMode = true
-                                        isCanceled = true
-                                        return@withTimeoutOrNull null
-                                    }
-                                    val change = event.changes.first()
-                                    if (change.pressed) {
-                                        totalDist += change.positionChange().getDistance()
-                                        if (totalDist > touchSlop) {
-                                            isCanceled = true // Moved too much, normal drawing
-                                            return@withTimeoutOrNull null
-                                        }
-                                    } else {
-                                        // Released before timeout
-                                        val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
-                                        onTap(px, py, change.position.x, change.position.y)
-                                        isCanceled = true
-                                        return@withTimeoutOrNull null
-                                    }
-                                }
-                            } ?: false // If timeout reached and not canceled
+            modifier = Modifier.fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var isCanceled = false
+                        var totalDist = 0f
+                        var interactionMode = 0 // 0: Idle, 1: Drawing, 2: Viewport (Transforming), 3: Eyedropper Override
 
-                            if (longPressTriggered == true && !isCanceled) {
-                                isLongPressMode = true
+                        // 1. Initial State Monitoring Window
+                        val longPressResult = withTimeoutOrNull(300L) {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.size > 1) {
+                                    interactionMode = 2 // Switch to Viewport Mode
+                                    return@withTimeoutOrNull null
+                                }
+                                val change = event.changes.first()
+                                if (change.pressed) {
+                                    totalDist += change.positionChange().getDistance()
+                                    if (totalDist > touchSlop) {
+                                        interactionMode = 1 // Switch to Drawing Mode
+                                        return@withTimeoutOrNull null
+                                    }
+                                } else {
+                                    // Tap
+                                    val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
+                                    onTap(px, py, change.position.x, change.position.y)
+                                    isCanceled = true
+                                    return@withTimeoutOrNull null
+                                }
+                            }
+                        }
+
+                        // 2. Decision Branching
+                        if (!isCanceled) {
+                            if (interactionMode == 0 && longPressResult == null) {
+                                // Long press timeout reached without significant movement
+                                interactionMode = 3
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onLongPressStart()
-                                
-                                // Drag loop for Eyedropper navigation
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.first()
-                                    if (change.pressed) {
-                                        val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
-                                        onDrag(px, py, change.position.x, change.position.y)
-                                        change.consume()
-                                    } else {
-                                        val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
-                                        onDrag(px, py, change.position.x, change.position.y) // Final pick
-                                        onLongPressStop()
-                                        isLongPressMode = false
-                                        break
+                            } else if (interactionMode == 0) {
+                                // Default fallback to Drawing if something is weird
+                                interactionMode = 1
+                            }
+
+                            when (interactionMode) {
+                                1 -> { // DRAWING MODE
+                                    val (px, py) = viewportState.mapScreenToBitmap(down.position.x, down.position.y)
+                                    onDragStart(px, py, down.position.x, down.position.y, false)
+                                    
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.size > 1) { onDragEnd(); break }
+                                        val change = event.changes.first()
+                                        if (change.pressed) {
+                                            val (dx, dy) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
+                                            onDrag(dx, dy, change.position.x, change.position.y)
+                                            change.consume()
+                                        } else { onDragEnd(); break }
                                     }
                                 }
-                            } else if (!isCanceled) {
-                                // 2. Normal Drawing Path
-                                val (px, py) = viewportState.mapScreenToBitmap(down.position.x, down.position.y)
-                                onDragStart(px, py, down.position.x, down.position.y, false)
-                                
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (isViewportMode || event.changes.size > 1) {
-                                        onDragEnd()
-                                        break
+                                2 -> { // VIEWPORT MODE
+                                    // Use built-in logic but we are in a custom scope
+                                    // Actually we can continue the loop and handle multi-touch manually
+                                    // or break and let detectTransformGestures handle it?
+                                    // Better: Handle manually to maintain state machine integrity.
+                                    var previousCentroid = Offset.Unspecified
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.none { it.pressed }) break
+                                        
+                                        val activeChanges = event.changes.filter { it.pressed }
+                                        val centroid = activeChanges.fold(Offset.Zero) { acc, c -> acc + c.position } / activeChanges.size.toFloat()
+                                        
+                                        if (activeChanges.size >= 2) {
+                                            // Calculate zoom and pan
+                                            val zoom = event.calculateZoom()
+                                            val pan = event.calculatePan()
+                                            viewportState.zoom(zoom, centroid.x, centroid.y, maxScale = maxScale)
+                                            viewportState.pan(pan.x, pan.y)
+                                        } else if (activeChanges.size == 1 && previousCentroid.isSpecified) {
+                                            // Optional: Allow single finger pan in viewport mode
+                                            val pan = centroid - previousCentroid
+                                            viewportState.pan(pan.x, pan.y)
+                                        }
+                                        previousCentroid = centroid
+                                        event.changes.forEach { it.consume() }
                                     }
-                                    val change = event.changes.first()
-                                    if (change.pressed) {
-                                        val (dx, dy) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
-                                        onDrag(dx, dy, change.position.x, change.position.y)
-                                        change.consume()
-                                    } else {
-                                        onDragEnd()
-                                        break
+                                }
+                                3 -> { // EYEDROPPER MODE
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.first()
+                                        if (change.pressed) {
+                                            val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
+                                            onDrag(px, py, change.position.x, change.position.y)
+                                            change.consume()
+                                        } else {
+                                            val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
+                                            onDrag(px, py, change.position.x, change.position.y)
+                                            onLongPressStop()
+                                            break
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
         ) {
             val scale = viewportState.scale
             val offsetX = viewportState.offsetX
@@ -186,17 +189,13 @@ fun PixelCanvas(
                 canvas.save()
                 val canvasRect = androidx.compose.ui.geometry.Rect(offsetX, offsetY, offsetX + projectWidth * scale, offsetY + projectHeight * scale)
                 canvas.clipRect(canvasRect.left, canvasRect.top, canvasRect.right, canvasRect.bottom)
-
                 if (projectState.backgroundColor == Color.Transparent) {
-                    val horizontalChecks = (size.width / checkSizePx).toInt() + 2
-                    val verticalChecks = (size.height / checkSizePx).toInt() + 2
+                    val checkSize = with(density) { 8.dp.toPx() }
+                    val horizontalChecks = (size.width / checkSize).toInt() + 2
+                    val verticalChecks = (size.height / checkSize).toInt() + 2
                     for (i in -1..horizontalChecks) {
                         for (j in -1..verticalChecks) {
-                            drawRect(
-                                color = if ((i + j) % 2 == 0) Color(0xFFE0E0E0) else Color.White,
-                                topLeft = Offset(i * checkSizePx, j * checkSizePx),
-                                size = Size(checkSizePx, checkSizePx)
-                            )
+                            drawRect(color = if ((i + j) % 2 == 0) Color(0xFFE0E0E0) else Color.White, topLeft = Offset(i * checkSize, j * checkSize), size = Size(checkSize, checkSize))
                         }
                     }
                 } else {
@@ -207,28 +206,19 @@ fun PixelCanvas(
 
             drawIntoCanvas { canvas ->
                 val paint = Paint().apply { isAntiAlias = false; isFilterBitmap = false; isDither = false }
-                val matrix = viewportState.getMatrix()
-                
                 projectState.layers.asReversed().forEach { layer ->
                     if (layer.isVisible) {
                         paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                        canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, matrix, paint)
+                        canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
                     }
                 }
-                
                 projectState.selection?.let { selection ->
                     val selMatrix = viewportState.getMatrix().apply { preTranslate(selection.x.toFloat(), selection.y.toFloat()) }
                     canvas.nativeCanvas.drawBitmap(selection.bitmap as Bitmap, selMatrix, paint)
-                    drawRect(
-                        color = Color.Blue,
-                        topLeft = Offset(offsetX + selection.x * scale, offsetY + selection.y * scale),
-                        size = Size(selection.bitmap.width * scale, selection.bitmap.height * scale),
-                        style = Stroke(width = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
-                    )
+                    drawRect(color = Color.Blue, topLeft = Offset(offsetX + selection.x * scale, offsetY + selection.y * scale), size = Size(selection.bitmap.width * scale, selection.bitmap.height * scale), style = Stroke(width = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)))
                 }
-                
                 projectState.previewLayer?.let { layer ->
-                    if (layer.isVisible) canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, matrix, paint)
+                    if (layer.isVisible) canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
                 }
             }
 
@@ -240,23 +230,16 @@ fun PixelCanvas(
                     val rightBitmap = ceil(min(projectWidth.toFloat(), (size.width - offsetX) / scale)).toInt()
                     val topBitmap = floor(max(0f, -offsetY / scale)).toInt()
                     val bottomBitmap = ceil(min(projectHeight.toFloat(), (size.height - offsetY) / scale)).toInt()
-                    
                     var index = 0
                     for (x in leftBitmap..rightBitmap) {
                         if (index + 4 > gridLinesBuffer.size) break
                         val lineX = offsetX + x * scale
-                        gridLinesBuffer[index++] = lineX
-                        gridLinesBuffer[index++] = max(offsetY, 0f)
-                        gridLinesBuffer[index++] = lineX
-                        gridLinesBuffer[index++] = min(offsetY + projectHeight * scale, size.height)
+                        gridLinesBuffer[index++] = lineX; gridLinesBuffer[index++] = max(offsetY, 0f); gridLinesBuffer[index++] = lineX; gridLinesBuffer[index++] = min(offsetY + projectHeight * scale, size.height)
                     }
                     for (y in topBitmap..bottomBitmap) {
                         if (index + 4 > gridLinesBuffer.size) break
                         val lineY = offsetY + y * scale
-                        gridLinesBuffer[index++] = max(offsetX, 0f)
-                        gridLinesBuffer[index++] = lineY
-                        gridLinesBuffer[index++] = min(offsetX + projectWidth * scale, size.width)
-                        gridLinesBuffer[index++] = lineY
+                        gridLinesBuffer[index++] = max(offsetX, 0f); gridLinesBuffer[index++] = lineY; gridLinesBuffer[index++] = min(offsetX + projectWidth * scale, size.width); gridLinesBuffer[index++] = lineY
                     }
                     if (index > 0) canvas.nativeCanvas.drawLines(gridLinesBuffer, 0, index, gridPaint)
                 }

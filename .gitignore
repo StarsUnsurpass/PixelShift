@@ -1,15 +1,47 @@
+# Gradle
+.gradle/
+build/
+
+# IntelliJ IDEA
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
+.idea/caches
+.idea/libraries
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/deploymentTargetSelector.xml
+.idea/appInsightsSettings.xml
+.idea/gradle.xml
+.idea/migrations.xml
+.idea/runConfigurations.xml
+.idea/studiobot.xml
+.idea/vcs.xml
+
+# Android Studio
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Build Artifacts
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+build_output*.txt
+compile_log*.txt
+
+# Debug/Release Specific (if any are kept outside build/)
+/*/debug/*
+/*/release/*
