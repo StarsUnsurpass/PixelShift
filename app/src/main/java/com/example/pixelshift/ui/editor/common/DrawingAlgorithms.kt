@@ -6,6 +6,8 @@ import java.util.Arrays
 
 object DrawingAlgorithms {
 
+    data class PixelChange(val x: Int, val y: Int, val oldColor: Int, val newColor: Int)
+
     /**
      * Standard Bresenham Line Algorithm.
      * Pure integer arithmetic (no division, no floats) using Grid Decision.
@@ -134,17 +136,24 @@ object DrawingAlgorithms {
         }
     }
 
-    fun scanlineFloodFill(bitmap: Bitmap, startX: Int, startY: Int, targetColor: Int, replacementColor: Int) {
-        if (targetColor == replacementColor) return
+    fun scanlineFloodFill(
+        bitmap: Bitmap, 
+        startX: Int, 
+        startY: Int, 
+        targetColor: Int, 
+        replacementColor: Int
+    ): List<PixelChange> {
+        if (targetColor == replacementColor) return emptyList()
         val width = bitmap.width
         val height = bitmap.height
-        if (startX !in 0 until width || startY !in 0 until height) return
+        if (startX !in 0 until width || startY !in 0 until height) return emptyList()
 
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        if (pixels[startY * width + startX] != targetColor) return
+        if (pixels[startY * width + startX] != targetColor) return emptyList()
 
+        val changes = mutableListOf<PixelChange>()
         val xStack = IntArray(width * height / 2)
         val yStack = IntArray(width * height / 2)
         var top = 0
@@ -169,7 +178,9 @@ object DrawingAlgorithms {
             }
 
             for (i in lx..rx) {
-                pixels[cy * width + i] = replacementColor
+                val idx = cy * width + i
+                changes.add(PixelChange(i, cy, pixels[idx], replacementColor))
+                pixels[idx] = replacementColor
             }
 
             if (cy > 0) {
@@ -197,10 +208,15 @@ object DrawingAlgorithms {
         }
 
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        return changes
     }
 
-    fun globalReplace(bitmap: Bitmap, targetColor: Int, replacementColor: Int) {
-        if (targetColor == replacementColor) return
+    fun globalReplace(
+        bitmap: Bitmap, 
+        targetColor: Int, 
+        replacementColor: Int
+    ): List<PixelChange> {
+        if (targetColor == replacementColor) return emptyList()
 
         val width = bitmap.width
         val height = bitmap.height
@@ -208,9 +224,11 @@ object DrawingAlgorithms {
 
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
+        val changes = mutableListOf<PixelChange>()
         var modified = false
         for (i in pixels.indices) {
             if (pixels[i] == targetColor) {
+                changes.add(PixelChange(i % width, i / width, pixels[i], replacementColor))
                 pixels[i] = replacementColor
                 modified = true
             }
@@ -219,6 +237,7 @@ object DrawingAlgorithms {
         if (modified) {
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         }
+        return changes
     }
 
     /**
@@ -280,7 +299,6 @@ object DrawingAlgorithms {
         for (y in top..bottom) {
             val startIndex = y * width + left
             val endIndex = y * width + right
-            // Java's Arrays.fill uses low-level native optimization (like memset)
             Arrays.fill(pixels, startIndex, endIndex + 1, color)
         }
 
