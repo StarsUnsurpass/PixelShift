@@ -27,7 +27,8 @@ enum class Tool {
 
 data class ToolSettings(
         val size: Int = 1, // 1px, 2px, 4px...
-        val shapeFilled: Boolean = false,
+        val rectFilled: Boolean = false,
+        val circleFilled: Boolean = false,
         val pixelPerfect: Boolean = false,
         val eraseToBackground: Boolean = false,
         val sampleAllLayers: Boolean = true,

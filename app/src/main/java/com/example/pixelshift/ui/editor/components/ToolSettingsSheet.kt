@@ -39,7 +39,8 @@ fun ToolSettingsSheet(
         onSecondaryColorChange: (Color) -> Unit,
         onSampleAllLayersChange: (Boolean) -> Unit,
         onContiguousChange: (Boolean) -> Unit,
-        onShapeFilledChange: (Boolean) -> Unit,
+        onRectFilledChange: (Boolean) -> Unit,
+        onCircleFilledChange: (Boolean) -> Unit,
         hasSelection: Boolean,
         onRotateSelection: () -> Unit,
         onFlipHorizontal: () -> Unit,
@@ -105,7 +106,6 @@ fun ToolSettingsSheet(
                                 modifier = Modifier.fillMaxWidth()
                         ) {
                                 Text("Secondary Color:")
-                                // Simple color row for quick selection
                                 val colors =
                                         listOf(
                                                 Color.White,
@@ -143,8 +143,7 @@ fun ToolSettingsSheet(
                                                         Icon(
                                                                 Icons.Default.Check,
                                                                 contentDescription = null,
-                                                                tint = Color.White, // Contrast
-                                                                // check needed
+                                                                tint = Color.White,
                                                                 modifier =
                                                                         Modifier.align(
                                                                                 Alignment.Center
@@ -187,10 +186,22 @@ fun ToolSettingsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("填充形状 (Fill Shape)")
+                        Text("填充矩形 (Fill Rectangle)")
                         Switch(
-                                checked = settings.shapeFilled,
-                                onCheckedChange = onShapeFilledChange
+                                checked = settings.rectFilled,
+                                onCheckedChange = onRectFilledChange
+                        )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                ) {
+                        Text("填充圆形 (Fill Circle)")
+                        Switch(
+                                checked = settings.circleFilled,
+                                onCheckedChange = onCircleFilledChange
                         )
                 }
 

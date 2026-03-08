@@ -41,6 +41,7 @@ import com.example.pixelshift.ui.editor.components.Magnifier
 import com.example.pixelshift.ui.editor.components.PixelCanvas
 import com.example.pixelshift.ui.editor.common.rememberViewportState
 import com.example.pixelshift.ui.theme.ThemeViewModel
+import com.example.pixelshift.ui.editor.common.Tool
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +57,7 @@ fun PixelArtEditorScreen(
     val projectState by viewModel.projectState.collectAsState()
     val currentTool by viewModel.currentTool.collectAsState()
 
-    val currentColor by viewModel.currentColor.collectAsState() // Added observation
+    val currentColor by viewModel.currentColor.collectAsState()
     val magnifierState by viewModel.magnifierState.collectAsState()
 
     var showLayerSheet by remember { mutableStateOf(false) }
@@ -109,16 +110,20 @@ fun PixelArtEditorScreen(
                         currentTool = currentTool,
                         onToolSelected = { viewModel.setTool(it) },
                         toolSettings = toolSettings,
-                        onToggleShapeFilled = { viewModel.toggleShapeFilled(!toolSettings.shapeFilled) },
+                        onToggleShapeFilled = { 
+                            if (currentTool == Tool.SHAPE_RECTANGLE) {
+                                viewModel.toggleRectFilled(!toolSettings.rectFilled)
+                            } else if (currentTool == Tool.SHAPE_CIRCLE) {
+                                viewModel.toggleCircleFilled(!toolSettings.circleFilled)
+                            }
+                        },
                         currentColor = currentColor,
                         onPaletteClick = { showColorPickerSheet = true }
                 )
             }
     ) { innerPadding ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            val screenSize = androidx.compose.ui.geometry.Size(maxWidth.value, maxHeight.value) // Approximate in Dp, but we need Px for math?
-            // Actually, BoxWithConstraints gives Dp. Navigator logic uses ViewportState which is in Pixels.
-            // We need to pass pixel size to Navigator.
+            val screenSize = androidx.compose.ui.geometry.Size(maxWidth.value, maxHeight.value)
             
             val density = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -150,14 +155,12 @@ fun PixelArtEditorScreen(
 
                 // Overlays
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Precision Loupe (Dynamic Follow Finger)
                     if (magnifierState.visible) {
                         val loupeSizeDp = 140.dp
                         val loupeSizePx = with(density) { loupeSizeDp.toPx() }
                         val offsetDp = 100.dp
                         val offsetPx = with(density) { offsetDp.toPx() }
                         
-                        // Collision Detection: if screenY < 150dp, flip to bottom
                         val isNearTop = magnifierState.screenY < with(density) { 150.dp.toPx() }
                         val targetY = if (isNearTop) {
                             magnifierState.screenY + offsetPx - loupeSizePx / 2
@@ -177,12 +180,11 @@ fun PixelArtEditorScreen(
                                 },
                             magnifierState = magnifierState,
                             projectState = projectState!!,
-                            brushSize = 1, // Loupe usually shows 1px target
+                            brushSize = 1,
                             magnifierSize = loupeSizeDp
                         )
                     }
                     
-                    // Navigator (Top-Right) - Keep it fixed for overview
                     Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
                          com.example.pixelshift.ui.editor.components.Navigator(
                              projectState = projectState!!,
@@ -230,7 +232,8 @@ fun PixelArtEditorScreen(
                         onSecondaryColorChange = { viewModel.setSecondaryColor(it) },
                         onSampleAllLayersChange = { viewModel.toggleSampleAllLayers(it) },
                         onContiguousChange = { viewModel.toggleContiguous(it) },
-                        onShapeFilledChange = { viewModel.toggleShapeFilled(it) },
+                        onRectFilledChange = { viewModel.toggleRectFilled(it) },
+                        onCircleFilledChange = { viewModel.toggleCircleFilled(it) },
                         hasSelection = projectState?.selection != null,
                         onRotateSelection = { viewModel.rotateSelection() },
                         onFlipHorizontal = { viewModel.flipSelection(true) },
@@ -299,6 +302,5 @@ fun saveImageToGallery(
         resolver.openOutputStream(uri)?.use { stream ->
             bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
         }
-        // Toast.makeText(context, "Saved to Gallery", Toast.LENGTH_SHORT).show()
     }
 }

@@ -71,13 +71,11 @@ class PixelArtViewModel : ViewModel() {
 
     private var savedToolBeforeShortcut: Tool? = null
     
-    // Core drawing coordinates - using nullable to represent uninitialized state
     private var startX: Int? = null
     private var startY: Int? = null
     private var lastX: Int? = null
     private var lastY: Int? = null
     
-    // Cache the last valid End Position during a drag for commit when released out of bounds
     private var lastValidDragX: Int? = null
     private var lastValidDragY: Int? = null
 
@@ -139,8 +137,12 @@ class PixelArtViewModel : ViewModel() {
         _toolSettings.update { it.copy(contiguous = enabled) }
     }
 
-    fun toggleShapeFilled(enabled: Boolean) {
-        _toolSettings.update { it.copy(shapeFilled = enabled) }
+    fun toggleRectFilled(enabled: Boolean) {
+        _toolSettings.update { it.copy(rectFilled = enabled) }
+    }
+
+    fun toggleCircleFilled(enabled: Boolean) {
+        _toolSettings.update { it.copy(circleFilled = enabled) }
     }
 
     fun togglePixelPerfect(enabled: Boolean) {
@@ -167,10 +169,23 @@ class PixelArtViewModel : ViewModel() {
         val color = _currentColor.value.toArgb()
         val size = _toolSettings.value.size
 
-        // CRITICAL: Handle Action End FIRST, before coordinate bounds check
+        if (!isDrag && !isActionEnd) {
+            startX = x
+            startY = y
+            lastX = x
+            lastY = y
+            lastValidDragX = x
+            lastValidDragY = y
+            
+            if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
+                val previewBitmap = Bitmap.createBitmap(state.width, state.height, Bitmap.Config.ARGB_8888)
+                val previewLayer = PixelLayer(id = "preview", name = "Preview", bitmap = previewBitmap)
+                _projectState.update { it?.copy(previewLayer = previewLayer, version = it.version + 1) }
+            }
+        }
+
         if (isActionEnd) {
             if (startX != null && startY != null) {
-                // If the end coordinate is invalid (-1), use the last valid coordinate from drag
                 val commitX = if (x in 0 until state.width) x else (lastValidDragX ?: startX!!)
                 val commitY = if (y in 0 until state.height) y else (lastValidDragY ?: startY!!)
                 
@@ -187,7 +202,7 @@ class PixelArtViewModel : ViewModel() {
                                     commitX,
                                     commitY,
                                     size,
-                                    _toolSettings.value.shapeFilled
+                                    _toolSettings.value.rectFilled
                             ) { px: Int, py: Int ->
                                 if (px in 0 until state.width && py in 0 until state.height)
                                         bitmap.setPixel(px, py, color)
@@ -199,7 +214,7 @@ class PixelArtViewModel : ViewModel() {
                                     commitX,
                                     commitY,
                                     size,
-                                    _toolSettings.value.shapeFilled
+                                    _toolSettings.value.circleFilled
                             ) { px: Int, py: Int ->
                                 if (px in 0 until state.width && py in 0 until state.height)
                                         bitmap.setPixel(px, py, color)
@@ -233,30 +248,12 @@ class PixelArtViewModel : ViewModel() {
             return
         }
 
-        // Action Start (Down)
-        if (!isDrag) {
-            startX = x
-            startY = y
-            lastX = x
-            lastY = y
-            lastValidDragX = x
-            lastValidDragY = y
-            
-            if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
-                val previewBitmap = Bitmap.createBitmap(state.width, state.height, Bitmap.Config.ARGB_8888)
-                val previewLayer = PixelLayer(id = "preview", name = "Preview", bitmap = previewBitmap)
-                _projectState.update { it?.copy(previewLayer = previewLayer, version = it.version + 1) }
-            }
-        }
-
         val isOutOfBounds = x !in 0 until state.width || y !in 0 until state.height
         if (isOutOfBounds) return
         
-        // Track valid coords for out-of-bounds release commit
         lastValidDragX = x
         lastValidDragY = y
 
-        // Continuous Handling (Move/Drag)
         when (tool) {
             Tool.PENCIL -> {
                 val colorToUse = _currentColor.value.toArgb()
@@ -306,7 +303,6 @@ class PixelArtViewModel : ViewModel() {
             }
             Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> {
                 if (isDrag) {
-                    // DEFENSIVE: If startX wasn't captured by ACTION_DOWN (e.g. out of bounds start), capture it now
                     if (startX == null) {
                         startX = x
                         startY = y
@@ -331,7 +327,7 @@ class PixelArtViewModel : ViewModel() {
                                         x,
                                         y,
                                         size,
-                                        _toolSettings.value.shapeFilled
+                                        _toolSettings.value.rectFilled
                                 ) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, color)
@@ -343,7 +339,7 @@ class PixelArtViewModel : ViewModel() {
                                         x,
                                         y,
                                         size,
-                                        _toolSettings.value.shapeFilled
+                                        _toolSettings.value.circleFilled
                                 ) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, color)
