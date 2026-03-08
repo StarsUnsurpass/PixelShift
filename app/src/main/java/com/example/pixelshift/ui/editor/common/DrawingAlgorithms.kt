@@ -2,6 +2,7 @@ package com.example.pixelshift.ui.editor.common
 
 import android.graphics.Bitmap
 import kotlin.math.abs
+import java.util.Arrays
 
 object DrawingAlgorithms {
 
@@ -102,13 +103,11 @@ object DrawingAlgorithms {
 
         while (x <= y) {
             if (filled) {
-                // Use horizontal scanlines for solid circle - Optimized for memory locality
                 drawHorizontalLine(x0 - x, x0 + x, y0 + y, plot)
                 drawHorizontalLine(x0 - x, x0 + x, y0 - y, plot)
                 drawHorizontalLine(x0 - y, x0 + y, y0 + x, plot)
                 drawHorizontalLine(x0 - y, x0 + y, y0 - x, plot)
             } else {
-                // Hollow circle using 8-way symmetry
                 plotBrush(x0 + x, y0 + y, brushSize, plot)
                 plotBrush(x0 - x, y0 + y, brushSize, plot)
                 plotBrush(x0 + x, y0 - y, brushSize, plot)
@@ -222,6 +221,10 @@ object DrawingAlgorithms {
         }
     }
 
+    /**
+     * Perfect Loop Rectangle drawing.
+     * Ensures each corner pixel is drawn exactly once to avoid alpha overlap artifacts.
+     */
     fun drawRectangle(
             x0: Int,
             y0: Int,
@@ -243,11 +246,45 @@ object DrawingAlgorithms {
                 }
             }
         } else {
-            drawLine(left, top, right, top, brushSize, plot)
-            drawLine(left, bottom, right, bottom, brushSize, plot)
-            drawLine(left, top, left, bottom, brushSize, plot)
-            drawLine(right, top, right, bottom, brushSize, plot)
+            // "The Perfect Loop" implementation
+            // 1. Top Edge: [left, right - 1]
+            for (x in left until right) plotBrush(x, top, brushSize, plot)
+            // 2. Right Edge: [top, bottom - 1]
+            for (y in top until bottom) plotBrush(right, y, brushSize, plot)
+            // 3. Bottom Edge: [right, left + 1] (stepping down)
+            for (x in right downTo left + 1) plotBrush(x, bottom, brushSize, plot)
+            // 4. Left Edge: [bottom, top + 1] (stepping up)
+            for (y in bottom downTo top + 1) plotBrush(left, y, brushSize, plot)
+            
+            // Handle 1x1 rectangle case
+            if (left == right && top == bottom) plotBrush(left, top, brushSize, plot)
         }
+    }
+
+    /**
+     * SIMD-optimized memory batch filling for rectangles.
+     * Uses getPixels/setPixels and Arrays.fill() for maximum throughput.
+     */
+    fun fillRectangle(bitmap: Bitmap, x0: Int, y0: Int, x1: Int, y1: Int, color: Int) {
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        val left = minOf(x0, x1).coerceIn(0, width - 1)
+        val right = maxOf(x0, x1).coerceIn(0, width - 1)
+        val top = minOf(y0, y1).coerceIn(0, height - 1)
+        val bottom = maxOf(y0, y1).coerceIn(0, height - 1)
+
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        for (y in top..bottom) {
+            val startIndex = y * width + left
+            val endIndex = y * width + right
+            // Java's Arrays.fill uses low-level native optimization (like memset)
+            Arrays.fill(pixels, startIndex, endIndex + 1, color)
+        }
+
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     }
 
     fun createRectMask(width: Int, height: Int, rect: android.graphics.Rect): Bitmap {

@@ -104,9 +104,12 @@ fun PixelArtEditorScreen(
                 )
             },
             bottomBar = {
+                val toolSettings by viewModel.toolSettings.collectAsState()
                 EditorBottomBar(
                         currentTool = currentTool,
                         onToolSelected = { viewModel.setTool(it) },
+                        toolSettings = toolSettings,
+                        onToggleShapeFilled = { viewModel.toggleShapeFilled(!toolSettings.shapeFilled) },
                         currentColor = currentColor,
                         onPaletteClick = { showColorPickerSheet = true }
                 )

@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.CropSquare
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FormatPaint
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,11 +37,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.pixelshift.ui.editor.common.Tool
+import com.example.pixelshift.ui.editor.common.ToolSettings
 
 @Composable
 fun EditorBottomBar(
         currentTool: Tool,
         onToolSelected: (Tool) -> Unit,
+        toolSettings: ToolSettings,
+        onToggleShapeFilled: () -> Unit,
         currentColor: Color,
         onPaletteClick: () -> Unit
 ) {
@@ -93,16 +98,22 @@ fun EditorBottomBar(
                     onClick = { onToolSelected(Tool.SHAPE_LINE) }
             )
             ToolButton(
-                    icon = Icons.Default.CropSquare,
-                    label = "矩形",
+                    icon = if (toolSettings.shapeFilled) Icons.Default.CropSquare else Icons.Default.CheckBoxOutlineBlank,
+                    label = if (toolSettings.shapeFilled) "实心矩形" else "空心矩形",
                     isSelected = currentTool == Tool.SHAPE_RECTANGLE,
-                    onClick = { onToolSelected(Tool.SHAPE_RECTANGLE) }
+                    onClick = { 
+                        if (currentTool == Tool.SHAPE_RECTANGLE) onToggleShapeFilled()
+                        else onToolSelected(Tool.SHAPE_RECTANGLE)
+                    }
             )
             ToolButton(
-                    icon = Icons.Default.Circle,
-                    label = "圆形",
+                    icon = if (toolSettings.shapeFilled) Icons.Default.Circle else Icons.Default.RadioButtonUnchecked,
+                    label = if (toolSettings.shapeFilled) "实心圆" else "空心圆",
                     isSelected = currentTool == Tool.SHAPE_CIRCLE,
-                    onClick = { onToolSelected(Tool.SHAPE_CIRCLE) }
+                    onClick = { 
+                        if (currentTool == Tool.SHAPE_CIRCLE) onToggleShapeFilled()
+                        else onToolSelected(Tool.SHAPE_CIRCLE)
+                    }
             )
 
             // Separator
