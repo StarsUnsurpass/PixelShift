@@ -150,6 +150,12 @@ fun PixelArtEditorScreen(
                         },
                         onDragEnd = {
                             viewModel.onPixelAction(-1, -1, isDrag = true, isActionEnd = true)
+                        },
+                        onLongPressStart = {
+                            viewModel.startEyedropperOverride()
+                        },
+                        onLongPressStop = {
+                            viewModel.stopEyedropperOverride()
                         }
                 )
 

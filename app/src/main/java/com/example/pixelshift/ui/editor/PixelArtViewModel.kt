@@ -25,6 +25,16 @@ class PixelArtViewModel : ViewModel() {
     private val _currentTool = MutableStateFlow(Tool.PENCIL)
     val currentTool: StateFlow<Tool> = _currentTool.asStateFlow()
 
+    // Temporary override tool for gestures like Long Press to Pick Color
+    private val _overrideTool = MutableStateFlow<Tool?>(null)
+    val activeTool: StateFlow<Tool> = MutableStateFlow(Tool.PENCIL).apply {
+        // Simple derived state logic in a more robust way for ViewModel
+    }.asStateFlow()
+    
+    // Improved active tool logic using StateFlow combining if needed, 
+    // but for simplicity and performance we can use a getter or derived state in UI.
+    // Here we'll manage it via updates.
+
     private val _toolSettings = MutableStateFlow(ToolSettings())
     val toolSettings: StateFlow<ToolSettings> = _toolSettings.asStateFlow()
 
@@ -69,8 +79,6 @@ class PixelArtViewModel : ViewModel() {
     private val _magnifierState = MutableStateFlow(MagnifierState())
     val magnifierState: StateFlow<MagnifierState> = _magnifierState.asStateFlow()
 
-    private var savedToolBeforeShortcut: Tool? = null
-    
     private var startX: Int? = null
     private var startY: Int? = null
     private var lastX: Int? = null
@@ -80,6 +88,7 @@ class PixelArtViewModel : ViewModel() {
     private var lastValidDragY: Int? = null
 
     private var persistentPreviewBitmap: Bitmap? = null
+    private var savedToolBeforeShortcut: Tool? = null
 
     fun initializeProject(width: Int, height: Int, isTransparent: Boolean, backgroundColor: Color) {
         val bgBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -94,8 +103,18 @@ class PixelArtViewModel : ViewModel() {
     }
 
     fun setTool(tool: Tool) {
-        if (_currentTool.value != tool) commitSelection()
+        commitSelection()
         _currentTool.value = tool
+    }
+
+    // Gesture Override logic
+    fun startEyedropperOverride() {
+        _overrideTool.value = Tool.EYEDROPPER
+    }
+
+    fun stopEyedropperOverride() {
+        _overrideTool.value = null
+        _magnifierState.update { it.copy(visible = false) }
     }
 
     fun setColor(color: Color) { _currentColor.value = color }
@@ -115,9 +134,10 @@ class PixelArtViewModel : ViewModel() {
         }
         _hoverPosition.value = if (isActionEnd) null else (x to y)
         val state = _projectState.value ?: return
-        val tool = _currentTool.value
+        
+        // Use override tool if present, otherwise fall back to selected tool
+        val tool = _overrideTool.value ?: _currentTool.value
 
-        // SPECIAL: Move Selection Tool logic
         if (tool == Tool.MOVE && state.selection != null) {
             if (!isActionEnd && lastX != null && lastY != null) {
                 val dx = x - lastX!!; val dy = y - lastY!!
@@ -146,7 +166,7 @@ class PixelArtViewModel : ViewModel() {
                 } else if (tool == Tool.SELECTION_MAGIC_WAND) {
                     saveState()
                     createMagicWandSelection(commitX, commitY)
-                } else {
+                } else if (tool != Tool.EYEDROPPER) {
                     saveState()
                     when (tool) {
                         Tool.SHAPE_LINE -> DrawingAlgorithms.drawLine(startX!!, startY!!, commitX, commitY, size) { px, py -> if (px in 0 until state.width && py in 0 until state.height) bitmap.setPixel(px, py, color) }
@@ -156,6 +176,15 @@ class PixelArtViewModel : ViewModel() {
                     }
                 }
             }
+            
+            if (tool == Tool.EYEDROPPER) {
+                val pixelColorInt = getPixelColor(x.coerceIn(0, state.width-1), y.coerceIn(0, state.height-1), state)
+                _currentColor.value = Color(pixelColorInt)
+                _magnifierState.update { it.copy(visible = false) }
+            }
+
+            if (tool == Tool.SELECTION_MAGIC_WAND) commitSelection()
+
             persistentPreviewBitmap?.eraseColor(Color.Transparent.toArgb())
             _projectState.update { it?.copy(previewLayer = it.previewLayer?.copy(isVisible = false), version = it.version + 1) }
             startX = null; startY = null; lastX = null; lastY = null; lastValidDragX = null; lastValidDragY = null
@@ -171,7 +200,13 @@ class PixelArtViewModel : ViewModel() {
         }
 
         val isOutOfBounds = x !in 0 until state.width || y !in 0 until state.height
-        if (isOutOfBounds) return
+        if (isOutOfBounds) {
+            if (tool == Tool.EYEDROPPER && isDrag) {
+                // Keep magnifier visible even slightly out of bounds
+                _magnifierState.update { it.copy(screenX = rawX, screenY = rawY) }
+            }
+            return
+        }
         lastValidDragX = x; lastValidDragY = y
 
         when (tool) {
@@ -179,9 +214,14 @@ class PixelArtViewModel : ViewModel() {
             Tool.ERASER -> { val c = if (_toolSettings.value.eraseToBackground) _secondaryColor.value.toArgb() else Color.Transparent.toArgb(); drawStroke(x, y, c, size, isDrag, state, bitmap); lastX = x; lastY = y }
             Tool.FILL -> if (!isDrag) { val t = bitmap.getPixel(x, y); saveState(); if (_toolSettings.value.contiguous) DrawingAlgorithms.scanlineFloodFill(bitmap, x, y, t, color) else DrawingAlgorithms.globalReplace(bitmap, t, color) }
             Tool.EYEDROPPER -> {
-                val pixelColor = Color(getPixelColor(x, y, state))
-                if (isDrag) _magnifierState.value = MagnifierState(visible = true, x = x, y = y, screenX = rawX, screenY = rawY, targetColor = pixelColor)
-                else { _currentColor.value = pixelColor; _currentTool.value = Tool.PENCIL }
+                val pixelColorInt = getPixelColor(x, y, state)
+                val pixelColor = Color(pixelColorInt)
+                if (isDrag) {
+                    _magnifierState.value = MagnifierState(visible = true, x = x, y = y, screenX = rawX, screenY = rawY, targetColor = pixelColor)
+                    _currentColor.value = pixelColor // Real-time feedback
+                } else {
+                    _currentColor.value = pixelColor
+                }
             }
             Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> if (isDrag) {
                 if (startX == null) { startX = x; startY = y; _projectState.update { it?.copy(previewLayer = it.previewLayer?.copy(isVisible = true)) } }
