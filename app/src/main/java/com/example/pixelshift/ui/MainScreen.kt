@@ -12,6 +12,8 @@ import androidx.navigation.navArgument
 import com.example.pixelshift.ui.dashboard.DashboardScreen
 import com.example.pixelshift.ui.editor.EditorScreen
 import com.example.pixelshift.ui.editor.PixelArtEditorScreen
+import com.example.pixelshift.ui.format.FormatConversionScreen
+import com.example.pixelshift.ui.settings.SettingsScreen
 import com.example.pixelshift.ui.theme.ThemeViewModel
 
 @Composable
@@ -26,6 +28,12 @@ fun MainScreen(themeViewModel: ThemeViewModel) {
             composable(Screen.Dashboard.route) { DashboardScreen(navController, themeViewModel) }
             composable(Screen.Editor.route) {
                 EditorScreen(navController, themeViewModel = themeViewModel)
+            }
+            composable(Screen.FormatConversion.route) {
+                FormatConversionScreen(navController, themeViewModel = themeViewModel)
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen(navController, themeViewModel = themeViewModel)
             }
             composable(
                     route = Screen.PixelArtEditor.route,

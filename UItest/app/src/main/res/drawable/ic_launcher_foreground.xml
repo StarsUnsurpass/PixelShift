@@ -1,4 +1,4 @@
-﻿<vector xmlns:android="http://schemas.android.com/apk/res/android"
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
@@ -35,6 +35,7 @@
             </gradient>
         </aapt:attr>
     </path>
+    <!-- Pixel shifting elements -->
     <path
         android:pathData="M70,35 h6 v6 h-6 z"
         android:fillColor="#00BFA5" />
@@ -49,6 +50,7 @@
         android:pathData="M43,78 v6 h6 v-6 z"
         android:fillColor="#C51162"
         android:alpha="0.6" />
+    <!-- Center Magic Pen metaphor -->
     <path
         android:pathData="M52,40 l4,0 l8,28 l-4,0 z"
         android:fillColor="#FFFFFF"

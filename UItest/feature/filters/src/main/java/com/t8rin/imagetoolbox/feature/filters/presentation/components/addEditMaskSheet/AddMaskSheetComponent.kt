@@ -41,8 +41,8 @@ import com.t8rin.imagetoolbox.core.filters.presentation.widget.FilterTemplateCre
 import com.t8rin.imagetoolbox.core.filters.presentation.widget.addFilters.AddFiltersSheetComponent
 import com.t8rin.imagetoolbox.core.ui.utils.BaseComponent
 import com.t8rin.imagetoolbox.core.ui.utils.state.update
-import com.t8rin.imagetoolbox.feature.draw.presentation.components.UiPathPaint
-import com.t8rin.imagetoolbox.feature.draw.presentation.components.toUiPathPaint
+import com.t8rin.imagetoolbox.feature.draw.presentation.components.model.UiPathPaint
+import com.t8rin.imagetoolbox.feature.draw.presentation.components.model.toUiPathPaint
 import com.t8rin.imagetoolbox.feature.filters.domain.FilterMaskApplier
 import com.t8rin.imagetoolbox.feature.filters.presentation.components.UiFilterMask
 import dagger.assisted.Assisted

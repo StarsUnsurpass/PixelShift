@@ -20,16 +20,6 @@ package com.t8rin.imagetoolbox.feature.draw.domain
 import com.t8rin.imagetoolbox.core.domain.model.IntegerSize
 import com.t8rin.imagetoolbox.core.domain.model.Pt
 import com.t8rin.imagetoolbox.core.domain.model.pt
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.FloodFill
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Lasso
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.OutlinedOval
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.OutlinedRect
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Oval
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Polygon
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Rect
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Spray
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Star
-import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode.Triangle
 
 sealed class DrawPathMode(
     val ordinal: Int
@@ -110,6 +100,12 @@ sealed class DrawPathMode(
         }
     }
 
+    data class Spray(
+        val density: Int = 50,
+        val pixelSize: Float = 1f,
+        val isSquareShaped: Boolean = false
+    ) : DrawPathMode(18)
+
     data class GlobalReplace(
         val tolerance: Float = 0.25f
     ) : DrawPathMode(19) {
@@ -117,12 +113,6 @@ sealed class DrawPathMode(
             val StrokeSize = 1f.pt
         }
     }
-
-    data class Spray(
-        val density: Int = 50,
-        val pixelSize: Float = 1f,
-        val isSquareShaped: Boolean = false
-    ) : DrawPathMode(18)
 
     val canChangeStrokeWidth: Boolean
         get() = this !is FloodFill && this !is GlobalReplace && (!isFilled || this is Spray)
@@ -137,9 +127,6 @@ sealed class DrawPathMode(
         val entries by lazy {
             listOf(
                 Free,
-                FloodFill(),
-                GlobalReplace(),
-                Spray(),
                 Line,
                 PointingArrow(),
                 DoublePointingArrow(),
@@ -148,14 +135,17 @@ sealed class DrawPathMode(
                 Lasso,
                 OutlinedRect(),
                 OutlinedOval,
-                OutlinedTriangle,
-                OutlinedPolygon(),
-                OutlinedStar(),
                 Rect(),
                 Oval,
                 Triangle,
+                OutlinedTriangle,
                 Polygon(),
-                Star()
+                OutlinedPolygon(),
+                Star(),
+                OutlinedStar(),
+                FloodFill(),
+                Spray(),
+                GlobalReplace()
             )
         }
 
@@ -189,6 +179,9 @@ private val filled = listOf(
 private val sharp = listOf(
     OutlinedRect(),
     OutlinedOval,
+    OutlinedTriangle,
+    OutlinedPolygon(),
+    OutlinedStar(),
     Rect(),
     Oval,
     Lasso,
