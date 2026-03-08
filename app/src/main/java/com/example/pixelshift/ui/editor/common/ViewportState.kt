@@ -19,27 +19,21 @@ class ViewportState(
     var offsetX by mutableFloatStateOf(initialOffsetX)
     var offsetY by mutableFloatStateOf(initialOffsetY)
 
-    fun zoom(zoomFactor: Float, centroidX: Float, centroidY: Float) {
-        val newScale = (scale * zoomFactor).coerceIn(0.1f, 500f) // Infinite zoom (up to 500x)
+    /**
+     * Performs an incremental zoom around a centroid.
+     * This follows the Affine Transformation principle to keep the point under centroid fixed.
+     */
+    fun zoom(zoomFactor: Float, centroidX: Float, centroidY: Float, maxScale: Float = 200f) {
+        val oldScale = scale
+        val newScale = (scale * zoomFactor).coerceIn(0.1f, maxScale)
         
-        // Adjust offset to zoom towards the centroid
-        // The logic is: preserve the point under the centroid
-        // (centroid - oldOffset) / oldScale = (centroid - newOffset) / newScale
-        // newOffset = centroid - (centroid - oldOffset) * (newScale / oldScale)
-        
-        // However, a simpler accumulation usually works well with standard gestures:
-        // offset += (centroid - offset) * (1 - zoomFactor) 
-        // Let's stick to the standard transformation logic used in detectTransformGestures
-        
-        // Actually, the simplest correct way for separate scale/offset:
-        // When we zoom by 'zoomFactor' around 'centroid', the world moves such that 'centroid' stays fixed.
-        // The vector from top-left to centroid was (centroid - offset).
-        // It becomes (centroid - offset) * zoomFactor.
-        // So the new offset is centroid - (centroid - oldOffset) * zoomFactor
-        
-        // But wait, allow the caller to handle complex logic if needed. 
-        // For basic zoom-in-center, we'll just update scale.
-        scale = newScale
+        if (oldScale != newScale) {
+            // Affine Logic: newOffset = centroid - (centroid - oldOffset) * (newScale / oldScale)
+            val ratio = newScale / oldScale
+            offsetX = centroidX - (centroidX - offsetX) * ratio
+            offsetY = centroidY - (centroidY - offsetY) * ratio
+            scale = newScale
+        }
     }
 
     fun pan(deltaX: Float, deltaY: Float) {
@@ -75,7 +69,7 @@ class ViewportState(
         inverse.mapPoints(pts)
         
         // Zero-drift: strictly floor the mapped floating point coordinates
-        return kotlin.math.floor(pts[0]).toInt() to kotlin.math.floor(pts[1]).toInt()
+        return kotlin.math.floor(pts[0].toDouble()).toInt() to kotlin.math.floor(pts[1].toDouble()).toInt()
     }
 
     companion object {

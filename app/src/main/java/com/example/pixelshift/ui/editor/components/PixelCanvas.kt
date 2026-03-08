@@ -38,32 +38,28 @@ fun PixelCanvas(
 ) {
     val density = LocalDensity.current
     val checkSizePx = with(density) { 8.dp.toPx() }
+    
+    // Ergonomic Max Scale: Ensure 1 pixel is approx 40dp on screen
+    val maxScale = remember(density.density) { density.density * 40f }
 
-    // We use BoxWithConstraints to get the available screen area for initial centering
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val screenWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
-        val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxHeight.toPx() }
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
 
-        // Reset initialization state when project ID changes
         var isInitialized by remember(projectState.id) { mutableStateOf(false) }
-
         val projectWidth = projectState.width
         val projectHeight = projectState.height
 
-        // Initial centering/scaling logic
+        // Strict Gesture State Machine
+        var isViewportMode by remember { mutableStateOf(false) }
+
         LaunchedEffect(projectState.id, screenWidthPx, screenHeightPx) {
             if (!isInitialized && screenWidthPx > 0 && screenHeightPx > 0) {
-                // Calculate initial scale to fit 80% of screen
                 val scaleX = (screenWidthPx * 0.8f) / projectWidth
                 val scaleY = (screenHeightPx * 0.8f) / projectHeight
                 val initialScale = minOf(scaleX, scaleY).coerceAtLeast(1f)
-
-                // Calculate initial offsets to center
-                val contentWidth = projectWidth * initialScale
-                val contentHeight = projectHeight * initialScale
-                val initialOffsetX = (screenWidthPx - contentWidth) / 2f
-                val initialOffsetY = (screenHeightPx - contentHeight) / 2f
-
+                val initialOffsetX = (screenWidthPx - projectWidth * initialScale) / 2f
+                val initialOffsetY = (screenHeightPx - projectHeight * initialScale) / 2f
                 viewportState.set(initialScale, initialOffsetX, initialOffsetY)
                 isInitialized = true
             }
@@ -73,49 +69,53 @@ fun PixelCanvas(
             modifier =
                 Modifier.fillMaxSize()
                     .pointerInput(Unit) {
-                        detectTransformGestures { centroid, pan, zoom, _ ->
-                            val oldScale = viewportState.scale
-                            val newScale = (oldScale * zoom).coerceIn(0.1f, 500f)
+                        detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, _ ->
+                            // Once 2+ fingers are down, lock into Viewport Mode
+                            isViewportMode = true
                             
-                            // Adjust offset to keep centroid fixed during zoom
-                            val cx = centroid.x
-                            val cy = centroid.y
-                            val ox = viewportState.offsetX
-                            val oy = viewportState.offsetY
-                            
-                            val nx = cx - (cx - ox) * (newScale / oldScale)
-                            val ny = cy - (cy - oy) * (newScale / oldScale)
-                            
-                            viewportState.set(newScale, nx + pan.x, ny + pan.y)
+                            // 1. Perform standard viewport transformation
+                            viewportState.zoom(zoom, centroid.x, centroid.y, maxScale = maxScale)
+                            viewportState.pan(pan.x, pan.y)
                         }
                     }
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { offset ->
+                                if (isViewportMode) return@detectTapGestures
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
-                                if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
-                                    onTap(pixelX, pixelY, offset.x, offset.y)
-                                }
+                                onTap(pixelX, pixelY, offset.x, offset.y)
                             },
                             onLongPress = { offset ->
+                                if (isViewportMode) return@detectTapGestures
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
-                                if (pixelX in 0 until projectWidth && pixelY in 0 until projectHeight) {
-                                    onDragStart(pixelX, pixelY, offset.x, offset.y, true)
-                                }
+                                onDragStart(pixelX, pixelY, offset.x, offset.y, true)
                             }
                         )
                     }
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
+                                // Reset viewport mode on fresh start
+                                isViewportMode = false
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(offset.x, offset.y)
                                 onDragStart(pixelX, pixelY, offset.x, offset.y, false)
                             },
                             onDrag = { change, _ ->
+                                // If we've entered viewport mode (2nd finger dropped), stop drawing immediately
+                                if (isViewportMode) return@detectDragGestures
+                                
                                 val (pixelX, pixelY) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
                                 onDrag(pixelX, pixelY, change.position.x, change.position.y)
                             },
-                            onDragEnd = { onDragEnd() }
+                            onDragEnd = { 
+                                onDragEnd()
+                                // Re-enable drawing mode only after all fingers are lifted
+                                isViewportMode = false
+                            },
+                            onDragCancel = {
+                                onDragEnd()
+                                isViewportMode = false
+                            }
                         )
                     }
         ) {
@@ -123,7 +123,6 @@ fun PixelCanvas(
             val offsetX = viewportState.offsetX
             val offsetY = viewportState.offsetY
             
-            // 1. Draw Background
             val canvasRect = androidx.compose.ui.geometry.Rect(
                 offsetX,
                 offsetY,
@@ -141,28 +140,15 @@ fun PixelCanvas(
                 )
 
                 if (projectState.backgroundColor == Color.Transparent) {
-                    // Stable Checkerboard: Fixed 8dp squares that don't scale
-                    // Using pre-calculated checkSizePx to avoid Composable context error
-                    
-                    // We draw covering the viewport but clipped to project bounds
                     val horizontalChecks = (size.width / checkSizePx).toInt() + 2
                     val verticalChecks = (size.height / checkSizePx).toInt() + 2
-                    
                     for (i in -1..horizontalChecks) {
                         for (j in -1..verticalChecks) {
-                            if ((i + j) % 2 == 0) {
-                                drawRect(
-                                    color = Color(0xFFE0E0E0), // Light gray
-                                    topLeft = Offset(i * checkSizePx, j * checkSizePx),
-                                    size = Size(checkSizePx, checkSizePx)
-                                )
-                            } else {
-                                drawRect(
-                                    color = Color.White,
-                                    topLeft = Offset(i * checkSizePx, j * checkSizePx),
-                                    size = Size(checkSizePx, checkSizePx)
-                                )
-                            }
+                            drawRect(
+                                color = if ((i + j) % 2 == 0) Color(0xFFE0E0E0) else Color.White,
+                                topLeft = Offset(i * checkSizePx, j * checkSizePx),
+                                size = Size(checkSizePx, checkSizePx)
+                            )
                         }
                     }
                 } else {
@@ -175,7 +161,6 @@ fun PixelCanvas(
                 canvas.restore()
             }
 
-            // Draw Border
             drawRect(
                 color = Color.DarkGray,
                 topLeft = Offset(offsetX - 1f, offsetY - 1f),
@@ -183,45 +168,25 @@ fun PixelCanvas(
                 style = Stroke(width = 1f)
             )
 
-            // 2. Draw Layers
             with(drawContext.canvas.nativeCanvas) {
-                // Reuse a single Paint instance
                 val paint = android.graphics.Paint().apply {
-                    isAntiAlias = false
-                    isFilterBitmap = false
-                    isDither = false
+                    isAntiAlias = false; isFilterBitmap = false; isDither = false
                 }
 
                 projectState.layers.asReversed().forEach { layer ->
                     if (layer.isVisible) {
                         paint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                        val bitmap = layer.bitmap as android.graphics.Bitmap
-                        
-                        // Professional Secret: Use a single Matrix for the entire canvas draw
-                        // rather than per-bitmap Rect calculations if possible.
-                        // For now, we use the matrix to ensure zero-drift consistency.
-                        val matrix = viewportState.getMatrix()
-                        drawBitmap(bitmap, matrix, paint)
+                        drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
                     }
                 }
             }
             
-             // 2.5 Draw Floating Selection
             projectState.selection?.let { selection ->
                   with(drawContext.canvas.nativeCanvas) {
-                      val paint = android.graphics.Paint().apply {
-                          isAntiAlias = false
-                          isFilterBitmap = false
-                          isDither = false
-                      }
-                      val bitmap = selection.bitmap as android.graphics.Bitmap
-                      val matrix = viewportState.getMatrix().apply {
-                          preTranslate(selection.x.toFloat(), selection.y.toFloat())
-                      }
-                      drawBitmap(bitmap, matrix, paint)
+                      val paint = android.graphics.Paint().apply { isAntiAlias = false; isFilterBitmap = false; isDither = false }
+                      val matrix = viewportState.getMatrix().apply { preTranslate(selection.x.toFloat(), selection.y.toFloat()) }
+                      drawBitmap(selection.bitmap as Bitmap, matrix, paint)
                   }
-                 
-                 // Draw selection border
                   drawRect(
                       color = Color.Blue,
                       topLeft = Offset(offsetX + selection.x * scale, offsetY + selection.y * scale),
@@ -230,101 +195,35 @@ fun PixelCanvas(
                   )
             }
             
-            // 3. Draw Preview Layer
              projectState.previewLayer?.let { layer ->
-                with(drawContext.canvas.nativeCanvas) {
-                    val paint = android.graphics.Paint().apply {
-                        isAntiAlias = false
-                        isFilterBitmap = false
-                        isDither = false
+                if (layer.isVisible) {
+                    with(drawContext.canvas.nativeCanvas) {
+                        val paint = android.graphics.Paint().apply { isAntiAlias = false; isFilterBitmap = false; isDither = false }
+                        drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
                     }
-                    val bitmap = layer.bitmap as android.graphics.Bitmap
-                    drawBitmap(bitmap, viewportState.getMatrix(), paint)
                 }
             }
             
-            // 4. Adaptive Grid
             if (scale > 10f) {
-                // Draw vertical lines
                 for (x in 0..projectWidth) {
                     val lineX = offsetX + x * scale
                     if (lineX in 0f..size.width) {
-                        drawLine(
-                            color = Color.Gray.copy(alpha = 0.3f),
-                            start = Offset(lineX, offsetY),
-                            end = Offset(lineX, offsetY + projectHeight * scale),
-                            strokeWidth = 1f
-                        )
+                        drawLine(color = Color.Gray.copy(alpha = 0.3f), start = Offset(lineX, offsetY), end = Offset(lineX, offsetY + projectHeight * scale), strokeWidth = 1f)
                     }
                 }
-                
-                // Draw horizontal lines
                 for (y in 0..projectHeight) {
                     val lineY = offsetY + y * scale
                     if (lineY in 0f..size.height) {
-                        drawLine(
-                            color = Color.Gray.copy(alpha = 0.3f),
-                            start = Offset(offsetX, lineY),
-                            end = Offset(offsetX + projectWidth * scale, lineY),
-                            strokeWidth = 1f
-                        )
+                        drawLine(color = Color.Gray.copy(alpha = 0.3f), start = Offset(offsetX, lineY), end = Offset(offsetX + projectWidth * scale, lineY), strokeWidth = 1f)
                     }
                 }
             }
 
-            // 5. Brush Ghost Cursor
             hoverPosition?.let { (hx, hy) ->
-                val startX: Float
-                val startY: Float
-
-                if (brushSize % 2 != 0) {
-                    // Odd: Center
-                    val offset = brushSize / 2
-                    startX = offsetX + (hx - offset) * scale
-                    startY = offsetY + (hy - offset) * scale
-                } else {
-                    // Even: Top-Left
-                    startX = offsetX + hx * scale
-                    startY = offsetY + hy * scale
-                }
-
-                drawRect(
-                    color = Color.Gray,
-                    topLeft = Offset(startX, startY),
-                    size = Size(brushSize * scale, brushSize * scale),
-                    style = Stroke(width = 1f)
-                )
+                val startX = if (brushSize % 2 != 0) offsetX + (hx - brushSize / 2) * scale else offsetX + hx * scale
+                val startY = if (brushSize % 2 != 0) offsetY + (hy - brushSize / 2) * scale else offsetY + hy * scale
+                drawRect(color = Color.Gray, topLeft = Offset(startX, startY), size = Size(brushSize * scale, brushSize * scale), style = Stroke(width = 1f))
             }
         }
-    }
-}
-
-private fun DrawScope.drawGrid(
-        offsetX: Float,
-        offsetY: Float,
-        scale: Float,
-        rows: Int,
-        cols: Int,
-        color: Color
-) {
-    // Vertical lines
-    for (c in 0..cols) {
-        val x = offsetX + c * scale
-        drawLine(
-                color = color,
-                start = Offset(x, offsetY),
-                end = Offset(x, offsetY + rows * scale),
-                strokeWidth = 1f
-        )
-    }
-    // Horizontal lines
-    for (r in 0..rows) {
-        val y = offsetY + r * scale
-        drawLine(
-                color = color,
-                start = Offset(offsetX, y),
-                end = Offset(offsetX + cols * scale, y),
-                strokeWidth = 1f
-        )
     }
 }
