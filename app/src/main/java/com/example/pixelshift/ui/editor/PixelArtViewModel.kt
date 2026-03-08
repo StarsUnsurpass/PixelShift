@@ -62,6 +62,12 @@ class PixelArtViewModel : ViewModel() {
     private val undoStack = Stack<List<PixelLayer>>()
     private val redoStack = Stack<List<PixelLayer>>()
 
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
+
+    private val _canRedo = MutableStateFlow(false)
+    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+
     private data class PixelNode(val x: Int, val y: Int, val oldColor: Int)
     private val currentStrokePath = java.util.LinkedList<PixelNode>()
 
@@ -246,6 +252,9 @@ class PixelArtViewModel : ViewModel() {
         val layersCopy = state.layers.map { it.copy(bitmap = it.bitmap.copy(Bitmap.Config.ARGB_8888, true)) }
         undoStack.push(layersCopy); redoStack.clear()
         if (undoStack.size > 20) undoStack.removeAt(0)
+        
+        _canUndo.value = undoStack.isNotEmpty()
+        _canRedo.value = redoStack.isNotEmpty()
     }
 
     fun undo() {
@@ -253,6 +262,9 @@ class PixelArtViewModel : ViewModel() {
         val state = _projectState.value ?: return
         redoStack.push(state.layers.map { it.copy(bitmap = it.bitmap.copy(Bitmap.Config.ARGB_8888, true)) })
         _projectState.update { it?.copy(layers = undoStack.pop(), version = it.version + 1) }
+        
+        _canUndo.value = undoStack.isNotEmpty()
+        _canRedo.value = redoStack.isNotEmpty()
     }
 
     fun redo() {
@@ -260,6 +272,9 @@ class PixelArtViewModel : ViewModel() {
         val state = _projectState.value ?: return
         undoStack.push(state.layers.map { it.copy(bitmap = it.bitmap.copy(Bitmap.Config.ARGB_8888, true)) })
         _projectState.update { it?.copy(layers = redoStack.pop(), version = it.version + 1) }
+        
+        _canUndo.value = undoStack.isNotEmpty()
+        _canRedo.value = redoStack.isNotEmpty()
     }
 
     fun addLayer() {

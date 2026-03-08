@@ -5,16 +5,17 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,10 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.pixelshift.ui.editor.components.EditorBottomBar
@@ -56,9 +58,11 @@ fun PixelArtEditorScreen(
 ) {
     val projectState by viewModel.projectState.collectAsState()
     val currentTool by viewModel.currentTool.collectAsState()
-
     val currentColor by viewModel.currentColor.collectAsState()
     val magnifierState by viewModel.magnifierState.collectAsState()
+    
+    val canUndo by viewModel.canUndo.collectAsState()
+    val canRedo by viewModel.canRedo.collectAsState()
 
     var showLayerSheet by remember { mutableStateOf(false) }
     var showToolSettingsSheet by remember { mutableStateOf(false) }
@@ -79,18 +83,39 @@ fun PixelArtEditorScreen(
     Scaffold(
             topBar = {
                 TopAppBar(
-                        title = { Text("像素编辑器") },
+                        title = { 
+                            Text(
+                                text = "像素编辑器",
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            ) 
+                        },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },
                         actions = {
-                            IconButton(onClick = { viewModel.undo() }) {
-                                Icon(Icons.Default.Undo, contentDescription = "Undo")
+                            IconButton(
+                                onClick = { viewModel.undo() },
+                                enabled = canUndo
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Undo, 
+                                    contentDescription = "Undo",
+                                    tint = if (canUndo) Color.Unspecified else Color.Gray.copy(alpha = 0.5f)
+                                )
                             }
-                            IconButton(onClick = { viewModel.redo() }) {
-                                Icon(Icons.Default.Redo, contentDescription = "Redo")
+                            IconButton(
+                                onClick = { viewModel.redo() },
+                                enabled = canRedo
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Redo, 
+                                    contentDescription = "Redo",
+                                    tint = if (canRedo) Color.Unspecified else Color.Gray.copy(alpha = 0.5f)
+                                )
                             }
                             IconButton(onClick = { showToolSettingsSheet = true }) {
                                 Icon(Icons.Default.Tune, contentDescription = "Tool Settings")
@@ -123,8 +148,6 @@ fun PixelArtEditorScreen(
             }
     ) { innerPadding ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            val screenSize = androidx.compose.ui.geometry.Size(maxWidth.value, maxHeight.value)
-            
             val density = androidx.compose.ui.platform.LocalDensity.current
             val screenWidthPx = with(density) { maxWidth.toPx() }
             val screenHeightPx = with(density) { maxHeight.toPx() }
@@ -156,7 +179,9 @@ fun PixelArtEditorScreen(
                         },
                         onLongPressStop = {
                             viewModel.stopEyedropperOverride()
-                        }
+                        },
+                        onUndo = { if (canUndo) viewModel.undo() },
+                        onRedo = { if (canRedo) viewModel.redo() }
                 )
 
                 // Overlays

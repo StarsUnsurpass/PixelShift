@@ -10,7 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -132,9 +133,7 @@ fun SectionTitleWithInfo(
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(onClick = { showInfo = true }, modifier = Modifier.size(20.dp)) {
                         Icon(
-                                imageVector =
-                                        androidx.compose.material.icons.Icons.Default
-                                                .HelpOutline, // Ensure this exists or use safe icon
+                                imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                                 contentDescription = "Info",
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                         )

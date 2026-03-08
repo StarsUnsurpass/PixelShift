@@ -36,6 +36,8 @@ fun PixelCanvas(
     onDragEnd: () -> Unit,
     onLongPressStart: () -> Unit,
     onLongPressStop: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     brushSize: Int = 1,
     hoverPosition: Pair<Int, Int>? = null,
     modifier: Modifier = Modifier
@@ -77,25 +79,26 @@ fun PixelCanvas(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         var isCanceled = false
                         var totalDist = 0f
-                        var interactionMode = 0 // 0: Idle, 1: Drawing, 2: Viewport (Transforming), 3: Eyedropper Override
+                        var interactionMode = 0 // 0: Idle, 1: Drawing, 2: Viewport, 3: Eyedropper, 4: Multi-Tap Detection
 
-                        // 1. Initial State Monitoring Window
+                        // 1. Initial State Monitoring Window (300ms)
                         val longPressResult = withTimeoutOrNull(300L) {
                             while (true) {
                                 val event = awaitPointerEvent()
                                 if (event.changes.size > 1) {
-                                    interactionMode = 2 // Switch to Viewport Mode
+                                    // Multiple fingers down within 300ms
+                                    interactionMode = 4
                                     return@withTimeoutOrNull null
                                 }
                                 val change = event.changes.first()
                                 if (change.pressed) {
                                     totalDist += change.positionChange().getDistance()
                                     if (totalDist > touchSlop) {
-                                        interactionMode = 1 // Switch to Drawing Mode
+                                        interactionMode = 1 // Moved, Drawing Mode
                                         return@withTimeoutOrNull null
                                     }
                                 } else {
-                                    // Tap
+                                    // Released early - Single Tap
                                     val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
                                     onTap(px, py, change.position.x, change.position.y)
                                     isCanceled = true
@@ -104,23 +107,19 @@ fun PixelCanvas(
                             }
                         }
 
-                        // 2. Decision Branching
                         if (!isCanceled) {
                             if (interactionMode == 0 && longPressResult == null) {
-                                // Long press timeout reached without significant movement
-                                interactionMode = 3
+                                interactionMode = 3 // Long Press
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onLongPressStart()
                             } else if (interactionMode == 0) {
-                                // Default fallback to Drawing if something is weird
                                 interactionMode = 1
                             }
 
                             when (interactionMode) {
-                                1 -> { // DRAWING MODE
+                                1 -> { // DRAWING
                                     val (px, py) = viewportState.mapScreenToBitmap(down.position.x, down.position.y)
                                     onDragStart(px, py, down.position.x, down.position.y, false)
-                                    
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         if (event.changes.size > 1) { onDragEnd(); break }
@@ -132,35 +131,7 @@ fun PixelCanvas(
                                         } else { onDragEnd(); break }
                                     }
                                 }
-                                2 -> { // VIEWPORT MODE
-                                    // Use built-in logic but we are in a custom scope
-                                    // Actually we can continue the loop and handle multi-touch manually
-                                    // or break and let detectTransformGestures handle it?
-                                    // Better: Handle manually to maintain state machine integrity.
-                                    var previousCentroid = Offset.Unspecified
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.none { it.pressed }) break
-                                        
-                                        val activeChanges = event.changes.filter { it.pressed }
-                                        val centroid = activeChanges.fold(Offset.Zero) { acc, c -> acc + c.position } / activeChanges.size.toFloat()
-                                        
-                                        if (activeChanges.size >= 2) {
-                                            // Calculate zoom and pan
-                                            val zoom = event.calculateZoom()
-                                            val pan = event.calculatePan()
-                                            viewportState.zoom(zoom, centroid.x, centroid.y, maxScale = maxScale)
-                                            viewportState.pan(pan.x, pan.y)
-                                        } else if (activeChanges.size == 1 && previousCentroid.isSpecified) {
-                                            // Optional: Allow single finger pan in viewport mode
-                                            val pan = centroid - previousCentroid
-                                            viewportState.pan(pan.x, pan.y)
-                                        }
-                                        previousCentroid = centroid
-                                        event.changes.forEach { it.consume() }
-                                    }
-                                }
-                                3 -> { // EYEDROPPER MODE
+                                3 -> { // EYEDROPPER
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         val change = event.changes.first()
@@ -172,6 +143,51 @@ fun PixelCanvas(
                                             val (px, py) = viewportState.mapScreenToBitmap(change.position.x, change.position.y)
                                             onDrag(px, py, change.position.x, change.position.y)
                                             onLongPressStop()
+                                            break
+                                        }
+                                    }
+                                }
+                                4 -> { // MULTI-TOUCH (Viewport or Shortcut Tap)
+                                    val startTime = System.currentTimeMillis()
+                                    var maxFingers = currentEvent.changes.size
+                                    var hasMoved = false
+                                    
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        maxFingers = max(maxFingers, event.changes.size)
+                                        if (event.changes.any { it.positionChange().getDistance() > touchSlop }) hasMoved = true
+                                        
+                                        if (event.changes.none { it.pressed }) {
+                                            // All fingers lifted
+                                            val duration = System.currentTimeMillis() - startTime
+                                            if (!hasMoved && duration < 300) {
+                                                if (maxFingers == 2) onUndo()
+                                                else if (maxFingers == 3) onRedo()
+                                            }
+                                            break
+                                        }
+                                        
+                                        if (hasMoved || System.currentTimeMillis() - startTime > 300) {
+                                            // Transition to Viewport Mode (Pan/Zoom)
+                                            var prevCentroid = Offset.Unspecified
+                                            while (true) {
+                                                val innerEvent = if (hasMoved) event else awaitPointerEvent()
+                                                hasMoved = true // Ensure we don't re-read the first event forever
+                                                if (innerEvent.changes.none { it.pressed }) break
+                                                
+                                                val active = innerEvent.changes.filter { it.pressed }
+                                                val centroid = active.fold(Offset.Zero) { acc, c -> acc + c.position } / active.size.toFloat()
+                                                
+                                                if (active.size >= 2) {
+                                                    viewportState.zoom(innerEvent.calculateZoom(), centroid.x, centroid.y, maxScale = maxScale)
+                                                    viewportState.pan(innerEvent.calculatePan().x, innerEvent.calculatePan().y)
+                                                } else if (active.size == 1 && prevCentroid.isSpecified) {
+                                                    viewportState.pan(centroid.x - prevCentroid.x, centroid.y - prevCentroid.y)
+                                                }
+                                                prevCentroid = centroid
+                                                innerEvent.changes.forEach { it.consume() }
+                                                if (active.isEmpty()) break
+                                            }
                                             break
                                         }
                                     }
