@@ -28,7 +28,6 @@ object DrawingAlgorithms {
         val sy = if (y0 < y1) 1 else -1
         
         if (dx >= dy) {
-            // X is the driving axis
             var p = (dy shl 1) - dx
             val inc2dy = dy shl 1
             val inc2dydx = (dy - dx) shl 1
@@ -44,7 +43,6 @@ object DrawingAlgorithms {
                 x += sx
             }
         } else {
-            // Y is the driving axis
             var p = (dx shl 1) - dy
             val inc2dx = dx shl 1
             val inc2dxdy = (dx - dy) shl 1
@@ -63,14 +61,14 @@ object DrawingAlgorithms {
     }
 
     private fun plotBrush(cx: Int, cy: Int, size: Int, plot: (x: Int, y: Int) -> Unit) {
-        if (size == 1) {
+        if (size <= 1) {
             plot(cx, cy)
             return
         }
 
-        val offset = if (size % 2 != 0) size / 2 else 0
-        val startX = cx - offset
-        val startY = cy - offset
+        val offset = size / 2
+        val startX = if (size % 2 != 0) cx - offset else cx
+        val startY = if (size % 2 != 0) cy - offset else cy
 
         for (x in startX until startX + size) {
             for (y in startY until startY + size) {
@@ -80,10 +78,63 @@ object DrawingAlgorithms {
     }
 
     /**
-     * High-performance Scanline Flood Fill.
-     * Uses getPixels/setPixels to minimize JNI overhead and processes data in a pure Java array.
-     * Renamed back to scanlineFloodFill for compatibility with ViewModel.
+     * Midpoint Circle Algorithm with 8-way symmetry.
+     * Supports both hollow and solid (scanline-optimized) circles.
      */
+    fun drawCircle(
+        x0: Int,
+        y0: Int,
+        x1: Int,
+        y1: Int,
+        brushSize: Int,
+        filled: Boolean,
+        plot: (x: Int, y: Int) -> Unit
+    ) {
+        val radius = kotlin.math.sqrt(((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)).toDouble()).toInt()
+        if (radius == 0) {
+            plotBrush(x0, y0, brushSize, plot)
+            return
+        }
+
+        var x = 0
+        var y = radius
+        var p = 1 - radius
+
+        while (x <= y) {
+            if (filled) {
+                // Use horizontal scanlines for solid circle - Optimized for memory locality
+                drawHorizontalLine(x0 - x, x0 + x, y0 + y, plot)
+                drawHorizontalLine(x0 - x, x0 + x, y0 - y, plot)
+                drawHorizontalLine(x0 - y, x0 + y, y0 + x, plot)
+                drawHorizontalLine(x0 - y, x0 + y, y0 - x, plot)
+            } else {
+                // Hollow circle using 8-way symmetry
+                plotBrush(x0 + x, y0 + y, brushSize, plot)
+                plotBrush(x0 - x, y0 + y, brushSize, plot)
+                plotBrush(x0 + x, y0 - y, brushSize, plot)
+                plotBrush(x0 - x, y0 - y, brushSize, plot)
+                plotBrush(x0 + y, y0 + x, brushSize, plot)
+                plotBrush(x0 - y, y0 + x, brushSize, plot)
+                plotBrush(x0 + y, y0 - x, brushSize, plot)
+                plotBrush(x0 - y, y0 - x, brushSize, plot)
+            }
+
+            x++
+            if (p < 0) {
+                p += (x shl 1) + 1
+            } else {
+                y--
+                p += (x shl 1) - (y shl 1) + 1
+            }
+        }
+    }
+
+    private fun drawHorizontalLine(startX: Int, endX: Int, y: Int, plot: (x: Int, y: Int) -> Unit) {
+        for (x in startX..endX) {
+            plot(x, y)
+        }
+    }
+
     fun scanlineFloodFill(bitmap: Bitmap, startX: Int, startY: Int, targetColor: Int, replacementColor: Int) {
         if (targetColor == replacementColor) return
         val width = bitmap.width
@@ -122,7 +173,6 @@ object DrawingAlgorithms {
                 pixels[cy * width + i] = replacementColor
             }
 
-            // Above
             if (cy > 0) {
                 var i = lx
                 while (i <= rx) {
@@ -134,7 +184,6 @@ object DrawingAlgorithms {
                     } else i++
                 }
             }
-            // Below
             if (cy < height - 1) {
                 var i = lx
                 while (i <= rx) {
@@ -151,10 +200,6 @@ object DrawingAlgorithms {
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     }
 
-    /**
-     * Ultimate Performance Global Replace.
-     * O(N) complexity with only 2 JNI calls.
-     */
     fun globalReplace(bitmap: Bitmap, targetColor: Int, replacementColor: Int) {
         if (targetColor == replacementColor) return
 
@@ -202,48 +247,6 @@ object DrawingAlgorithms {
             drawLine(left, bottom, right, bottom, brushSize, plot)
             drawLine(left, top, left, bottom, brushSize, plot)
             drawLine(right, top, right, bottom, brushSize, plot)
-        }
-    }
-
-    fun drawCircle(
-            x0: Int,
-            y0: Int,
-            x1: Int,
-            y1: Int,
-            brushSize: Int,
-            filled: Boolean,
-            plot: (x: Int, y: Int) -> Unit
-    ) {
-        val radius = kotlin.math.sqrt(((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)).toDouble()).toInt()
-        var x = radius
-        var y = 0
-        var err = 0
-
-        while (x >= y) {
-            if (filled) {
-                drawLine(x0 - x, y0 + y, x0 + x, y0 + y, 1, plot)
-                drawLine(x0 - x, y0 - y, x0 + x, y0 - y, 1, plot)
-                drawLine(x0 - y, y0 + x, x0 + y, y0 + x, 1, plot)
-                drawLine(x0 - y, y0 - x, x0 + y, y0 - x, 1, plot)
-            } else {
-                plotBrush(x0 + x, y0 + y, brushSize, plot)
-                plotBrush(x0 + y, y0 + x, brushSize, plot)
-                plotBrush(x0 - y, y0 + x, brushSize, plot)
-                plotBrush(x0 - x, y0 + y, brushSize, plot)
-                plotBrush(x0 - x, y0 - y, brushSize, plot)
-                plotBrush(x0 - y, y0 - x, brushSize, plot)
-                plotBrush(x0 + y, y0 - x, brushSize, plot)
-                plotBrush(x0 + x, y0 - y, brushSize, plot)
-            }
-
-            if (err <= 0) {
-                y += 1
-                err += 2 * y + 1
-            }
-            if (err > 0) {
-                x -= 1
-                err -= 2 * x + 1
-            }
         }
     }
 
