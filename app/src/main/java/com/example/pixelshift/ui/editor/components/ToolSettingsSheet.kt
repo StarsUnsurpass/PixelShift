@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -27,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.pixelshift.ui.editor.common.ToolSettings
+import com.example.pixelshift.ui.editor.common.SymmetryState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,18 +52,59 @@ fun ToolSettingsSheet(
         onFlipHorizontal: () -> Unit,
         onFlipVertical: () -> Unit,
         onClearSelection: () -> Unit,
+        symmetry: SymmetryState,
+        onXSymmetryChange: (Boolean) -> Unit,
+        onYSymmetryChange: (Boolean) -> Unit,
+        referenceVisible: Boolean,
+        onReferenceImagePick: () -> Unit,
+        onReferenceClear: () -> Unit,
         onClose: () -> Unit
 ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Text("Tool Settings", style = MaterialTheme.typography.titleMedium)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+                Text("Tool Settings / 工具设置", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(16.dp))
 
-                // Brush Size
+                // Symmetry Section
+                Text("Symmetry / 对称绘制", style = MaterialTheme.typography.titleMedium)
                 Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                ) { Text("Brush Size: ${settings.size}px") }
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text("X Axis", modifier = Modifier.weight(1f))
+                        Switch(checked = symmetry.xEnabled, onCheckedChange = onXSymmetryChange)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text("Y Axis", modifier = Modifier.weight(1f))
+                        Switch(checked = symmetry.yEnabled, onCheckedChange = onYSymmetryChange)
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Reference Image Section
+                Text("Reference / 参考图", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(onClick = onReferenceImagePick, modifier = Modifier.weight(1f)) {
+                        Text("Pick Image")
+                    }
+                    if (referenceVisible) {
+                        OutlinedButton(onClick = onReferenceClear, modifier = Modifier.weight(1f)) {
+                            Text("Clear")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Brush Size
+                Text("Brush Size / 画笔大小: ${settings.size}px", style = MaterialTheme.typography.titleMedium)
                 Slider(
                         value = settings.size.toFloat(),
                         onValueChange = { onSizeChange(it.toInt()) },
@@ -170,11 +217,6 @@ fun ToolSettingsSheet(
                         Text("连续填充 (Contiguous)")
                         Switch(checked = settings.contiguous, onCheckedChange = onContiguousChange)
                 }
-                Text(
-                        text = if (settings.contiguous) "当前模式: 仅填充相连区域" else "当前模式: 全局替换同色像素",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                )
 
                 Spacer(Modifier.height(16.dp))
 
@@ -230,24 +272,23 @@ fun ToolSettingsSheet(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                                androidx.compose.material3.OutlinedButton(
+                                OutlinedButton(
                                         onClick = onRotateSelection,
                                         modifier = Modifier.weight(1f)
                                 ) { Text("Rot 90") }
-                                androidx.compose.material3.OutlinedButton(
+                                OutlinedButton(
                                         onClick = onFlipHorizontal,
                                         modifier = Modifier.weight(1f)
                                 ) { Text("Flip H") }
-                                androidx.compose.material3.OutlinedButton(
+                                OutlinedButton(
                                         onClick = onFlipVertical,
                                         modifier = Modifier.weight(1f)
                                 ) { Text("Flip V") }
                         }
-                        androidx.compose.material3.Button(
+                        Button(
                                 onClick = onClearSelection,
                                 modifier = Modifier.fillMaxWidth(),
-                                colors =
-                                        androidx.compose.material3.ButtonDefaults.buttonColors(
+                                colors = ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.error
                                         )
                         ) { Text("Clear Selection / 取消选区") }

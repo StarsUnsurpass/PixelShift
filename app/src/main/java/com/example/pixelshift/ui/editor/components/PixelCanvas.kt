@@ -220,6 +220,23 @@ fun PixelCanvas(
                 canvas.restore()
             }
 
+            // --- REFERENCE IMAGE (Bilinear Filtering enabled) ---
+            projectState.referenceImage.bitmap?.let { refBitmap ->
+                if (projectState.referenceImage.visible) {
+                    drawIntoCanvas { canvas ->
+                        val refPaint = Paint().apply {
+                            isAntiAlias = true
+                            isFilterBitmap = true // PROFESSIONAL DOUBLE STANDARD: Reference image needs filtering
+                            alpha = (projectState.referenceImage.opacity * 255).toInt().coerceIn(0, 255)
+                        }
+                        // Apply both viewport and reference image's internal transform
+                        val refMatrix = android.graphics.Matrix(viewportState.getMatrix())
+                        refMatrix.preConcat(projectState.referenceImage.matrix)
+                        canvas.nativeCanvas.drawBitmap(refBitmap, refMatrix, refPaint)
+                    }
+                }
+            }
+
             drawIntoCanvas { canvas ->
                 val paint = Paint().apply { 
                     isAntiAlias = false
@@ -287,6 +304,17 @@ fun PixelCanvas(
                 projectState.previewLayer?.let { layer ->
                     if (layer.isVisible) canvas.nativeCanvas.drawBitmap(layer.bitmap as Bitmap, viewportState.getMatrix(), paint)
                 }
+            }
+
+            // --- SYMMETRY AXIS INDICATORS ---
+            val symmetry = projectState.symmetry
+            if (symmetry.xEnabled) {
+                val centerX = (projectWidth / 2f) * scale + offsetX
+                drawLine(color = Color.Cyan.copy(alpha = 0.5f), start = Offset(centerX, offsetY), end = Offset(centerX, offsetY + projectHeight * scale), strokeWidth = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+            }
+            if (symmetry.yEnabled) {
+                val centerY = (projectHeight / 2f) * scale + offsetY
+                drawLine(color = Color.Cyan.copy(alpha = 0.5f), start = Offset(offsetX, centerY), end = Offset(offsetX + projectWidth * scale, centerY), strokeWidth = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
             }
 
             val gridAlpha = ((scale - 6f) / (10f - 6f)).coerceIn(0f, 1f)

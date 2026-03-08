@@ -73,6 +73,28 @@ fun PixelArtEditorScreen(
 
     val viewportState = rememberViewportState()
     
+    val referenceImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    val source = android.graphics.ImageDecoder.createSource(context.contentResolver, it)
+                    val bitmap = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                        decoder.isMutableRequired = true
+                    }
+                    viewModel.setReferenceImage(bitmap)
+                } else {
+                    @Suppress("DEPRECATION")
+                    val bitmap = android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, it)
+                    viewModel.setReferenceImage(bitmap)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+    
     LaunchedEffect(Unit) {
         if (projectState == null) {
             val bgColor = if (isTransparentBackground) Color.Transparent else Color(backgroundColor)
@@ -289,6 +311,12 @@ fun PixelArtEditorScreen(
                         onFlipHorizontal = { viewModel.flipSelection(true) },
                         onFlipVertical = { viewModel.flipSelection(false) },
                         onClearSelection = { viewModel.clearSelection() },
+                        symmetry = projectState?.symmetry ?: com.example.pixelshift.ui.editor.common.SymmetryState(),
+                        onXSymmetryChange = { viewModel.toggleXSymmetry(it) },
+                        onYSymmetryChange = { viewModel.toggleYSymmetry(it) },
+                        referenceVisible = projectState?.referenceImage?.bitmap != null,
+                        onReferenceImagePick = { referenceImagePicker.launch("image/*") },
+                        onReferenceClear = { viewModel.clearReferenceImage() },
                         onClose = { showToolSettingsSheet = false }
                 )
             }

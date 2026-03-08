@@ -515,6 +515,30 @@ class PixelArtViewModel : ViewModel() {
         _projectState.update { it?.copy(layers = newLayers, version = it.version + 1) }
     }
 
+    fun toggleXSymmetry(enabled: Boolean) {
+        _projectState.update { it?.copy(symmetry = it.symmetry.copy(xEnabled = enabled), version = it.version + 1) }
+    }
+
+    fun toggleYSymmetry(enabled: Boolean) {
+        _projectState.update { it?.copy(symmetry = it.symmetry.copy(yEnabled = enabled), version = it.version + 1) }
+    }
+
+    fun setReferenceImage(bitmap: Bitmap) {
+        _projectState.update { it?.copy(referenceImage = it.referenceImage.copy(bitmap = bitmap, visible = true), version = it.version + 1) }
+    }
+
+    fun setReferenceImageOpacity(opacity: Float) {
+        _projectState.update { it?.copy(referenceImage = it.referenceImage.copy(opacity = opacity), version = it.version + 1) }
+    }
+
+    fun updateReferenceImageMatrix(matrix: android.graphics.Matrix) {
+        _projectState.update { it?.copy(referenceImage = it.referenceImage.copy(matrix = matrix), version = it.version + 1) }
+    }
+
+    fun clearReferenceImage() {
+        _projectState.update { it?.copy(referenceImage = it.referenceImage.copy(bitmap = null), version = it.version + 1) }
+    }
+
     fun selectLayer(layerId: String) { 
         _projectState.update { it?.copy(activeLayerId = layerId, version = it.version + 1) } 
     }
@@ -544,8 +568,23 @@ class PixelArtViewModel : ViewModel() {
                 }
             }
         }
-        if (lastX != null && lastY != null && isDrag) DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size, plotPixel)
-        else { if (!isDrag) currentStrokePath.clear(); DrawingAlgorithms.drawLine(x, y, x, y, size, plotPixel) }
+
+        val symmetry = state.symmetry
+        val multiPlot: (Int, Int) -> Unit = { px, py ->
+            plotPixel(px, py)
+            if (symmetry.xEnabled) {
+                plotPixel(state.width - 1 - px, py)
+            }
+            if (symmetry.yEnabled) {
+                plotPixel(px, state.height - 1 - py)
+            }
+            if (symmetry.xEnabled && symmetry.yEnabled) {
+                plotPixel(state.width - 1 - px, state.height - 1 - py)
+            }
+        }
+
+        if (lastX != null && lastY != null && isDrag) DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size, multiPlot)
+        else { if (!isDrag) currentStrokePath.clear(); DrawingAlgorithms.drawLine(x, y, x, y, size, multiPlot) }
     }
 
     private fun getPixelColor(x: Int, y: Int, state: ProjectState): Int {

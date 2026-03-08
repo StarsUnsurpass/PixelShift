@@ -59,6 +59,18 @@ data class SelectionState(
         val y: Int // Current Y position on canvas
 )
 
+data class SymmetryState(
+    val xEnabled: Boolean = false,
+    val yEnabled: Boolean = false
+)
+
+data class ReferenceImageState(
+    val bitmap: Bitmap? = null,
+    val visible: Boolean = true,
+    val opacity: Float = 0.5f,
+    val matrix: android.graphics.Matrix = android.graphics.Matrix()
+)
+
 data class ProjectState(
         val id: String = java.util.UUID.randomUUID().toString(),
         val width: Int,
@@ -68,5 +80,7 @@ data class ProjectState(
         val backgroundColor: Color = Color.Transparent,
         val previewLayer: PixelLayer? = null,
         val selection: SelectionState? = null,
+        val symmetry: SymmetryState = SymmetryState(),
+        val referenceImage: ReferenceImageState = ReferenceImageState(),
         val version: Long = 0L
 )
