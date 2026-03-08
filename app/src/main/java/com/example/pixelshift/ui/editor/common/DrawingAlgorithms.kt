@@ -5,6 +5,11 @@ import kotlin.math.abs
 
 object DrawingAlgorithms {
 
+    /**
+     * Standard Bresenham Line Algorithm.
+     * Pure integer arithmetic (no division, no floats) using Grid Decision.
+     * Ensures perfect 8-connectivity for gap-less lines.
+     */
     fun drawLine(
             x0: Int,
             y0: Int,
@@ -15,22 +20,43 @@ object DrawingAlgorithms {
     ) {
         var x = x0
         var y = y0
+        
         val dx = abs(x1 - x0)
         val dy = abs(y1 - y0)
+        
         val sx = if (x0 < x1) 1 else -1
         val sy = if (y0 < y1) 1 else -1
-        var err = dx - dy
-
-        while (true) {
-            plotBrush(x, y, brushSize, plot)
-            if (x == x1 && y == y1) break
-            val e2 = 2 * err
-            if (e2 > -dy) {
-                err -= dy
+        
+        if (dx >= dy) {
+            // X is the driving axis
+            var p = (dy shl 1) - dx
+            val inc2dy = dy shl 1
+            val inc2dydx = (dy - dx) shl 1
+            
+            for (i in 0..dx) {
+                plotBrush(x, y, brushSize, plot)
+                if (p < 0) {
+                    p += inc2dy
+                } else {
+                    y += sy
+                    p += inc2dydx
+                }
                 x += sx
             }
-            if (e2 < dx) {
-                err += dx
+        } else {
+            // Y is the driving axis
+            var p = (dx shl 1) - dy
+            val inc2dx = dx shl 1
+            val inc2dxdy = (dx - dy) shl 1
+            
+            for (i in 0..dy) {
+                plotBrush(x, y, brushSize, plot)
+                if (p < 0) {
+                    p += inc2dx
+                } else {
+                    x += sx
+                    p += inc2dxdy
+                }
                 y += sy
             }
         }
