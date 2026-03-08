@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.pixelshift.ui.editor.common.Tool
 
 @Composable
@@ -40,107 +43,146 @@ fun EditorBottomBar(
         currentColor: Color,
         onPaletteClick: () -> Unit
 ) {
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(16.dp)
-                            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
     ) {
-        ToolButton(
-                icon = Icons.Default.Brush,
-                isSelected = currentTool == Tool.PENCIL,
-                onClick = { onToolSelected(Tool.PENCIL) }
-        )
-        ToolButton(
-                icon = Icons.Default.Delete,
-                isSelected = currentTool == Tool.ERASER,
-                onClick = { onToolSelected(Tool.ERASER) }
-        )
-        ToolButton(
-                icon = Icons.Default.FormatPaint,
-                isSelected = currentTool == Tool.FILL,
-                onClick = { onToolSelected(Tool.FILL) }
-        )
-        ToolButton(
-                icon = Icons.Default.Colorize,
-                isSelected = currentTool == Tool.EYEDROPPER,
-                onClick = { onToolSelected(Tool.EYEDROPPER) }
-        )
-
-        // Shapes
-        // We lack specific icons for Line/Rect/Circle in default Material Icons, using analogues
-        ToolButton(
-                icon = Icons.Default.HorizontalRule, // Line
-                isSelected = currentTool == Tool.SHAPE_LINE,
-                onClick = { onToolSelected(Tool.SHAPE_LINE) }
-        )
-        ToolButton(
-                icon = Icons.Default.CropSquare, // Rect
-                isSelected = currentTool == Tool.SHAPE_RECTANGLE,
-                onClick = { onToolSelected(Tool.SHAPE_RECTANGLE) }
-        )
-        ToolButton(
-                icon = Icons.Default.Circle, // Circle
-                isSelected = currentTool == Tool.SHAPE_CIRCLE,
-                onClick = { onToolSelected(Tool.SHAPE_CIRCLE) }
-        )
-
-        // Selection
-        ToolButton(
-                icon = Icons.Default.SelectAll, // Selection Rect
-                isSelected = currentTool == Tool.SELECTION_RECTANGLE,
-                onClick = { onToolSelected(Tool.SELECTION_RECTANGLE) }
-        )
-        ToolButton(
-                icon = Icons.Default.AutoFixHigh, // Magic Wand
-                isSelected = currentTool == Tool.SELECTION_MAGIC_WAND,
-                onClick = { onToolSelected(Tool.SELECTION_MAGIC_WAND) }
-        )
-        ToolButton(
-                icon = Icons.Default.OpenWith, // Move
-                isSelected = currentTool == Tool.MOVE,
-                onClick = { onToolSelected(Tool.MOVE) }
-        )
-
-        // Color Preview
-        Box(
+        Row(
                 modifier =
-                        Modifier.size(32.dp)
-                                .clip(CircleShape)
-                                .background(currentColor)
-                                .clickable { onPaletteClick() }
-                                .then(
-                                        if (currentColor == Color.Transparent ||
-                                                        currentColor == Color.White
-                                        ) {
-                                            Modifier.background(Color.Gray.copy(alpha = 0.2f))
-                                        } else Modifier
-                                )
-        )
+                        Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Group 1: Basic Tools
+            ToolButton(
+                    icon = Icons.Default.Brush,
+                    label = "笔",
+                    isSelected = currentTool == Tool.PENCIL,
+                    onClick = { onToolSelected(Tool.PENCIL) }
+            )
+            ToolButton(
+                    icon = Icons.Default.Delete,
+                    label = "橡皮",
+                    isSelected = currentTool == Tool.ERASER,
+                    onClick = { onToolSelected(Tool.ERASER) }
+            )
+            ToolButton(
+                    icon = Icons.Default.FormatPaint,
+                    label = "油漆桶",
+                    isSelected = currentTool == Tool.FILL,
+                    onClick = { onToolSelected(Tool.FILL) }
+            )
+            ToolButton(
+                    icon = Icons.Default.Colorize,
+                    label = "吸管",
+                    isSelected = currentTool == Tool.EYEDROPPER,
+                    onClick = { onToolSelected(Tool.EYEDROPPER) }
+            )
+
+            // Separator
+            Box(Modifier.size(1.dp, 24.dp).background(Color.LightGray))
+
+            // Group 2: Shapes
+            ToolButton(
+                    icon = Icons.Default.HorizontalRule,
+                    label = "直线",
+                    isSelected = currentTool == Tool.SHAPE_LINE,
+                    onClick = { onToolSelected(Tool.SHAPE_LINE) }
+            )
+            ToolButton(
+                    icon = Icons.Default.CropSquare,
+                    label = "矩形",
+                    isSelected = currentTool == Tool.SHAPE_RECTANGLE,
+                    onClick = { onToolSelected(Tool.SHAPE_RECTANGLE) }
+            )
+            ToolButton(
+                    icon = Icons.Default.Circle,
+                    label = "圆形",
+                    isSelected = currentTool == Tool.SHAPE_CIRCLE,
+                    onClick = { onToolSelected(Tool.SHAPE_CIRCLE) }
+            )
+
+            // Separator
+            Box(Modifier.size(1.dp, 24.dp).background(Color.LightGray))
+
+            // Group 3: Selection & Move
+            ToolButton(
+                    icon = Icons.Default.SelectAll,
+                    label = "选区",
+                    isSelected = currentTool == Tool.SELECTION_RECTANGLE,
+                    onClick = { onToolSelected(Tool.SELECTION_RECTANGLE) }
+            )
+            ToolButton(
+                    icon = Icons.Default.AutoFixHigh,
+                    label = "魔棒",
+                    isSelected = currentTool == Tool.SELECTION_MAGIC_WAND,
+                    onClick = { onToolSelected(Tool.SELECTION_MAGIC_WAND) }
+            )
+            ToolButton(
+                    icon = Icons.Default.OpenWith,
+                    label = "移动",
+                    isSelected = currentTool == Tool.MOVE,
+                    onClick = { onToolSelected(Tool.MOVE) }
+            )
+
+            // Color Preview
+            Box(
+                    modifier =
+                            Modifier.size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(currentColor)
+                                    .clickable { onPaletteClick() }
+                                    .then(
+                                            if (currentColor == Color.Transparent ||
+                                                            currentColor == Color.White
+                                            ) {
+                                                Modifier.background(Color.Gray.copy(alpha = 0.2f))
+                                            } else Modifier
+                                    ),
+                    contentAlignment = Alignment.Center
+            ) {
+                if (currentColor == Color.Transparent) {
+                    Text("T", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ToolButton(icon: ImageVector, isSelected: Boolean, onClick: () -> Unit) {
-    Box(
-            modifier =
-                    Modifier.clip(CircleShape)
-                            .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent
-                            )
-                            .clickable { onClick() }
-                            .padding(8.dp)
+private fun ToolButton(
+    icon: ImageVector, 
+    label: String,
+    isSelected: Boolean, 
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                else Color.Transparent
+            )
+            .clickable { onClick() }
+            .padding(8.dp)
     ) {
         Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = label,
+                modifier = Modifier.size(24.dp),
                 tint =
                         if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
                         else MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray
         )
     }
 }
