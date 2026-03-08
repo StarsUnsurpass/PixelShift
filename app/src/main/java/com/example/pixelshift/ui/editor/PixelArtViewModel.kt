@@ -145,12 +145,16 @@ class PixelArtViewModel : ViewModel() {
         val tool = _overrideTool.value ?: _currentTool.value
 
         if (tool == Tool.MOVE && state.selection != null) {
+            if (!isDrag && !isActionEnd) {
+                // Save state BEFORE starting to move
+                saveState()
+            }
             if (!isActionEnd && lastX != null && lastY != null) {
                 val dx = x - lastX!!; val dy = y - lastY!!
                 if (dx != 0 || dy != 0) moveSelection(dx, dy)
             }
             lastX = x; lastY = y
-            if (isActionEnd) { lastX = null; lastY = null; saveState() }
+            if (isActionEnd) { lastX = null; lastY = null }
             return
         }
 
@@ -167,13 +171,10 @@ class PixelArtViewModel : ViewModel() {
                 if (tool == Tool.SELECTION_RECTANGLE) {
                     val left = minOf(startX!!, commitX); val right = maxOf(startX!!, commitX)
                     val top = minOf(startY!!, commitY); val bottom = maxOf(startY!!, commitY)
-                    saveState()
                     createRectSelection(android.graphics.Rect(left, top, right + 1, bottom + 1))
                 } else if (tool == Tool.SELECTION_MAGIC_WAND) {
-                    saveState()
                     createMagicWandSelection(commitX, commitY)
                 } else if (tool != Tool.EYEDROPPER) {
-                    saveState()
                     when (tool) {
                         Tool.SHAPE_LINE -> DrawingAlgorithms.drawLine(startX!!, startY!!, commitX, commitY, size) { px, py -> if (px in 0 until state.width && py in 0 until state.height) bitmap.setPixel(px, py, color) }
                         Tool.SHAPE_RECTANGLE -> DrawingAlgorithms.drawRectangle(startX!!, startY!!, commitX, commitY, size, _toolSettings.value.rectFilled) { px, py -> if (px in 0 until state.width && py in 0 until state.height) bitmap.setPixel(px, py, color) }
@@ -199,6 +200,13 @@ class PixelArtViewModel : ViewModel() {
 
         if (!isDrag) {
             startX = x; startY = y; lastX = x; lastY = y; lastValidDragX = x; lastValidDragY = y
+            
+            // --- CRITICAL FIX: SAVE STATE BEFORE MODIFICATION ---
+            // Only save state for tools that actually change the pixel data or selection
+            if (tool != Tool.EYEDROPPER) {
+                saveState()
+            }
+
             if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
                 persistentPreviewBitmap?.eraseColor(Color.Transparent.toArgb())
                 _projectState.update { it?.copy(previewLayer = it.previewLayer?.copy(isVisible = true), version = it.version + 1) }
@@ -218,7 +226,7 @@ class PixelArtViewModel : ViewModel() {
         when (tool) {
             Tool.PENCIL -> { drawStroke(x, y, color, size, isDrag, state, bitmap); lastX = x; lastY = y }
             Tool.ERASER -> { val c = if (_toolSettings.value.eraseToBackground) _secondaryColor.value.toArgb() else Color.Transparent.toArgb(); drawStroke(x, y, c, size, isDrag, state, bitmap); lastX = x; lastY = y }
-            Tool.FILL -> if (!isDrag) { val t = bitmap.getPixel(x, y); saveState(); if (_toolSettings.value.contiguous) DrawingAlgorithms.scanlineFloodFill(bitmap, x, y, t, color) else DrawingAlgorithms.globalReplace(bitmap, t, color) }
+            Tool.FILL -> if (!isDrag) { val t = bitmap.getPixel(x, y); if (_toolSettings.value.contiguous) DrawingAlgorithms.scanlineFloodFill(bitmap, x, y, t, color) else DrawingAlgorithms.globalReplace(bitmap, t, color) }
             Tool.EYEDROPPER -> {
                 val pixelColorInt = getPixelColor(x, y, state)
                 val pixelColor = Color(pixelColorInt)
