@@ -49,25 +49,21 @@ class PixelArtViewModel : ViewModel() {
     private val _secondaryColor = MutableStateFlow(Color.White) // Background/Secondary color
     val secondaryColor: StateFlow<Color> = _secondaryColor.asStateFlow()
 
-    // Undo/Redo Stacks (Simplified for now - storing full bitmaps)
-    // In a real app, we'd store diffs or commands to save memory.
     private val undoStack = Stack<List<PixelLayer>>()
     private val redoStack = Stack<List<PixelLayer>>()
 
-    // Pixel Perfect Tracking
     private data class PixelNode(val x: Int, val y: Int, val oldColor: Int)
     private val currentStrokePath = java.util.LinkedList<PixelNode>()
 
     private val _hoverPosition = MutableStateFlow<Pair<Int, Int>?>(null)
     val hoverPosition: StateFlow<Pair<Int, Int>?> = _hoverPosition.asStateFlow()
 
-    // Magnifier State
     data class MagnifierState(
             val visible: Boolean = false,
             val x: Int = 0,
-            val y: Int = 0, // Pixel coordinates
+            val y: Int = 0,
             val screenX: Float = 0f,
-            val screenY: Float = 0f, // Raw screen coords for placement
+            val screenY: Float = 0f,
             val targetColor: Color = Color.Transparent
     )
     private val _magnifierState = MutableStateFlow(MagnifierState())
@@ -78,8 +74,6 @@ class PixelArtViewModel : ViewModel() {
     private var lastY: Int? = null
 
     fun initializeProject(width: Int, height: Int, isTransparent: Boolean, backgroundColor: Color) {
-        // Layer 0: Background (Locked)
-        // If solid, fill with color. If transparent, it's transparent.
         val bgBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         if (!isTransparent) {
             bgBitmap.eraseColor(backgroundColor.toArgb())
@@ -91,7 +85,6 @@ class PixelArtViewModel : ViewModel() {
                         isLocked = true
                 )
 
-        // Layer 1: Draft (Active, Transparent)
         val draftBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val draftLayer =
                 PixelLayer(
@@ -100,7 +93,6 @@ class PixelArtViewModel : ViewModel() {
                         isLocked = false
                 )
 
-        // Layers are stored [Top, Bottom] based on addLayer logic
         val layers = listOf(draftLayer, bgLayer)
 
         _projectState.value =
@@ -151,7 +143,6 @@ class PixelArtViewModel : ViewModel() {
         _toolSettings.update { it.copy(size = size) }
     }
 
-    // Drawing Logic (Bresenham + Pixel Perfect)
     fun onPixelAction(x: Int, y: Int, isDrag: Boolean, isActionEnd: Boolean = false, rawX: Float = 0f, rawY: Float = 0f, isShortcut: Boolean = false) {
         if (isShortcut && !isActionEnd && _currentTool.value != Tool.EYEDROPPER) {
             savedToolBeforeShortcut = _currentTool.value
@@ -168,34 +159,20 @@ class PixelArtViewModel : ViewModel() {
         val color = _currentColor.value.toArgb()
         val size = _toolSettings.value.size
 
-        // If coordinates are out of bounds, we might still need to process isActionEnd (e.g. commit shape)
         val isOutOfBounds = x !in 0 until state.width || y !in 0 until state.height
 
         if (isOutOfBounds) {
             if (isActionEnd) {
-                // Determine if we need to finish a shape or just reset
-                if (tool == Tool.SHAPE_LINE || tool == Tool.SHAPE_RECTANGLE || tool == Tool.SHAPE_CIRCLE || tool == Tool.SELECTION_RECTANGLE) {
-                     // If we are finishing a shape, we might need the last valid X/Y. 
-                     // But if x/y are -1 passed from DragEnd, we shouldn't use them as the end point.
-                     // The logic below for shapes uses 'x' and 'y' as end points.
-                     // We should probably use lastX/lastY if x/y are invalid? 
-                     // Actually, if we just want to commit what we have, we might need to handle it.
-                     // For now, let's just fall through to the isActionEnd block at the bottom
-                     // but ensure we don't 'draw' a new segment to -1,-1.
-                } else {
-                     // For PENCIL/ERASER, just reset
+                if (tool != Tool.SHAPE_LINE && tool != Tool.SHAPE_RECTANGLE && tool != Tool.SHAPE_CIRCLE && tool != Tool.SELECTION_RECTANGLE) {
                      lastX = null
                      lastY = null
                      saveState()
                      return
                 }
             } else {
-                // If just dragging out of bounds, do nothing
                 return
             }
         }
-
-
 
         when (tool) {
             Tool.PENCIL -> {
@@ -240,7 +217,6 @@ class PixelArtViewModel : ViewModel() {
                                 targetColor = pixelColor
                             )
                 } else if (!isActionEnd) {
-                    // Tap to pick
                     _currentColor.value = pixelColor
                     _currentTool.value = Tool.PENCIL
                 }
@@ -249,18 +225,15 @@ class PixelArtViewModel : ViewModel() {
                     _currentColor.value = pixelColor
                     _magnifierState.value = _magnifierState.value.copy(visible = false)
                     
-                    // Restore tool if it was a shortcut
                     savedToolBeforeShortcut?.let {
                         _currentTool.value = it
                         savedToolBeforeShortcut = null
                     } ?: run {
-                        // Normal switch if we were already in EYEDROPPER
                         _currentTool.value = Tool.PENCIL
                     }
                 }
             }
             Tool.SHAPE_LINE, Tool.SHAPE_RECTANGLE, Tool.SHAPE_CIRCLE, Tool.SELECTION_RECTANGLE -> {
-                // Initialize Preview Layer
                 if (isDrag && lastX == null) {
                     lastX = x
                     lastY = y
@@ -279,7 +252,7 @@ class PixelArtViewModel : ViewModel() {
 
                     when (tool) {
                         Tool.SHAPE_LINE ->
-                                DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
+                                DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, color)
                                 }
@@ -291,7 +264,7 @@ class PixelArtViewModel : ViewModel() {
                                         y,
                                         size,
                                         _toolSettings.value.shapeFilled
-                                ) { px, py ->
+                                ) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, color)
                                 }
@@ -303,14 +276,12 @@ class PixelArtViewModel : ViewModel() {
                                         y,
                                         size,
                                         _toolSettings.value.shapeFilled
-                                ) { px, py ->
+                                ) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, color)
                                 }
                         Tool.SELECTION_RECTANGLE ->
-                                DrawingAlgorithms.drawRectangle(lastX!!, lastY!!, x, y, 1, false) {
-                                        px,
-                                        py ->
+                                DrawingAlgorithms.drawRectangle(lastX!!, lastY!!, x, y, 1, false) { px: Int, py: Int ->
                                     if (px in 0 until state.width && py in 0 until state.height)
                                             previewBitmap.setPixel(px, py, Color.Gray.toArgb())
                                 }
@@ -323,27 +294,12 @@ class PixelArtViewModel : ViewModel() {
         }
 
         if (isActionEnd && lastX != null) {
-            // Only commit shape if end coordinates are valid, OR if we want to commit the preview.
-            // Current logic redraws. If x,y are -1, we shouldn't draw.
-            // If the user released outside, maybe we should use clamp?
-            // For now, let's assume if x=-1, we abort the shape commit or commit to last valid?
-            // "lastX" is the START point.
-            
-            // If we received -1, -1, it means we don't have a valid "current" point.
-            // But we might have had a valid preview.
-            // Ideally we should commit the preview. But here we redraw.
-            
-            val validX = x.coerceIn(0, state.width - 1)
-            val validY = y.coerceIn(0, state.height - 1)
-            // Use clamped values if we are out of bounds but valid start exists?
-            // Or just check if x/y are -1.
-            
             val shouldDraw = x in 0 until state.width && y in 0 until state.height
             
             if (shouldDraw) {
                 when (tool) {
                     Tool.SHAPE_LINE ->
-                            DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px, py ->
+                            DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size) { px: Int, py: Int ->
                                 if (px in 0 until state.width && py in 0 until state.height)
                                         bitmap.setPixel(px, py, color)
                             }
@@ -355,7 +311,7 @@ class PixelArtViewModel : ViewModel() {
                                     y,
                                     size,
                                     _toolSettings.value.shapeFilled
-                            ) { px, py ->
+                            ) { px: Int, py: Int ->
                                 if (px in 0 until state.width && py in 0 until state.height)
                                         bitmap.setPixel(px, py, color)
                             }
@@ -367,7 +323,7 @@ class PixelArtViewModel : ViewModel() {
                                     y,
                                     size,
                                     _toolSettings.value.shapeFilled
-                            ) { px, py ->
+                            ) { px: Int, py: Int ->
                                 if (px in 0 until state.width && py in 0 until state.height)
                                         bitmap.setPixel(px, py, color)
                             }
@@ -384,9 +340,6 @@ class PixelArtViewModel : ViewModel() {
                     }
                     else -> {}
                 }
-            } else {
-                 // If we are out of bounds (e.g. -1, -1 passed on release), 
-                 // we might still want to clear the preview layer
             }
 
             if (tool == Tool.SHAPE_LINE ||
@@ -417,10 +370,8 @@ class PixelArtViewModel : ViewModel() {
         _projectState.update { it?.copy(layers = it.layers.toList(), version = it.version + 1) }
     }
 
-    // Undo/Redo
     private fun saveState() {
         val state = _projectState.value ?: return
-        // Deep copy layers
         val layersCopy =
                 state.layers.map { layer ->
                     layer.copy(bitmap = layer.bitmap.copy(Bitmap.Config.ARGB_8888, true))
@@ -428,7 +379,6 @@ class PixelArtViewModel : ViewModel() {
         undoStack.push(layersCopy)
         redoStack.clear()
 
-        // Limit stack size?
         if (undoStack.size > 20) {
             undoStack.removeAt(0)
         }
@@ -438,7 +388,6 @@ class PixelArtViewModel : ViewModel() {
         if (undoStack.isEmpty()) return
 
         val state = _projectState.value ?: return
-        // Save current to redo
         val currentLayersCopy =
                 state.layers.map { layer ->
                     layer.copy(bitmap = layer.bitmap.copy(Bitmap.Config.ARGB_8888, true))
@@ -453,7 +402,6 @@ class PixelArtViewModel : ViewModel() {
         if (redoStack.isEmpty()) return
 
         val state = _projectState.value ?: return
-        // Save current to undo
         val currentLayersCopy =
                 state.layers.map { layer ->
                     layer.copy(bitmap = layer.bitmap.copy(Bitmap.Config.ARGB_8888, true))
@@ -464,8 +412,6 @@ class PixelArtViewModel : ViewModel() {
         _projectState.update { it?.copy(layers = nextLayers) }
     }
 
-    // We'll implement robust drawing (Bresenham) in the next step.
-    // Layer Management
     fun addLayer() {
         val state = _projectState.value ?: return
         val newLayer =
@@ -480,7 +426,7 @@ class PixelArtViewModel : ViewModel() {
                 )
         _projectState.update {
             it?.copy(
-                    layers = listOf(newLayer) + it.layers, // Add to top
+                    layers = listOf(newLayer) + it.layers,
                     activeLayerId = newLayer.id
             )
         }
@@ -488,7 +434,7 @@ class PixelArtViewModel : ViewModel() {
 
     fun removeLayer(layerId: String) {
         val state = _projectState.value ?: return
-        if (state.layers.size <= 1) return // Cannot delete last layer
+        if (state.layers.size <= 1) return
 
         val newLayers = state.layers.filter { it.id != layerId }
         val newActiveId =
@@ -501,7 +447,6 @@ class PixelArtViewModel : ViewModel() {
         val state = _projectState.value ?: return
         val layer = state.layers.find { it.id == layerId } ?: return
         layer.isVisible = isVisible
-        // Trigger update
         _projectState.update { it?.copy(layers = it.layers.toList(), version = it.version + 1) }
     }
 
@@ -509,7 +454,6 @@ class PixelArtViewModel : ViewModel() {
         _projectState.update { it?.copy(activeLayerId = layerId) }
     }
 
-    // Export
     fun generateExportBitmap(scale: Int): Bitmap? {
         val state = _projectState.value ?: return null
         val w = state.width * scale
@@ -518,10 +462,6 @@ class PixelArtViewModel : ViewModel() {
         val destBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(destBitmap)
 
-        // Draw background
-        // canvas.drawColor(state.backgroundColor.toArgb()) // If we want to export background
-        // Usually pixel art formats support transparency.
-        // If background is solid, we should probably draw it.
         if (state.backgroundColor != Color.Transparent) {
             canvas.drawColor(state.backgroundColor.toArgb())
         }
@@ -552,27 +492,21 @@ class PixelArtViewModel : ViewModel() {
             state: ProjectState,
             bitmap: Bitmap
     ) {
-        // Prepare plot function
-        val plotPixel: (Int, Int) -> Unit = { px, py ->
+        val plotPixel: (Int, Int) -> Unit = { px: Int, py: Int ->
             if (px in 0 until state.width && py in 0 until state.height) {
                 val originalColor = bitmap.getPixel(px, py)
                 bitmap.setPixel(px, py, color)
 
-                // Pixel Perfect Logic (Only for 1px brush)
                 if (_toolSettings.value.pixelPerfect && size == 1) {
                     currentStrokePath.add(PixelNode(px, py, originalColor))
 
-                    // Check for L-shape
                     if (currentStrokePath.size >= 3) {
-                        val c = currentStrokePath.last() // Current
-                        val b = currentStrokePath[currentStrokePath.size - 2] // Middle
-                        val a = currentStrokePath[currentStrokePath.size - 3] // Previous
+                        val c = currentStrokePath.last()
+                        val b = currentStrokePath[currentStrokePath.size - 2]
+                        val a = currentStrokePath[currentStrokePath.size - 3]
 
-                        // Check if A and C are diagonal neighbors
                         if (kotlin.math.abs(a.x - c.x) == 1 && kotlin.math.abs(a.y - c.y) == 1) {
-                            // Check if B creates an L-shape (shared coord with A and C)
                             if ((b.x == a.x && b.y == c.y) || (b.x == c.x && b.y == a.y)) {
-                                // Restore B
                                 bitmap.setPixel(b.x, b.y, b.oldColor)
                                 currentStrokePath.removeAt(currentStrokePath.size - 2)
                             }
@@ -585,7 +519,6 @@ class PixelArtViewModel : ViewModel() {
         if (lastX != null && lastY != null && isDrag) {
             DrawingAlgorithms.drawLine(lastX!!, lastY!!, x, y, size, plotPixel)
         } else {
-            // Reset path on new stroke (ACTION_DOWN or single tap)
             if (!isDrag) currentStrokePath.clear()
             DrawingAlgorithms.drawLine(x, y, x, y, size, plotPixel)
         }
@@ -596,13 +529,11 @@ class PixelArtViewModel : ViewModel() {
                 return Color.Transparent.toArgb()
 
         return if (_toolSettings.value.sampleAllLayers) {
-        // Top-Down Raycasting with Alpha Blending
         var finalR = 0f
         var finalG = 0f
         var finalB = 0f
         var finalA = 0f
 
-        // 1. Traverse layers from top to bottom
         state.layers.forEach { layer ->
             if (layer.isVisible) {
                 val pixel = layer.bitmap.getPixel(x, y)
@@ -610,20 +541,12 @@ class PixelArtViewModel : ViewModel() {
                 val srcA = srcColor.alpha
 
                 if (srcA > 0f) {
-                    // Blending formula: out = src + dst * (1 - srcA)
                     if (finalA == 0f) {
-                        // First visible pixel found
                         finalR = srcColor.red
                         finalG = srcColor.green
                         finalB = srcColor.blue
                         finalA = srcA
                     } else {
-                        // Blend with what we already have (which is above this layer)
-                        // Actually, if we go Top-Down, we are blending UNDER.
-                        // Correct Top-Down blending:
-                        // Result = TopLayer.RGB * TopA + UnderLayers.RGB * UnderA * (1 - TopA)
-                        // Wait, easier to track "remaining transmittance"
-                        // But let's stick to standard iterative blending:
                         val dstA = finalA
                         val newA = dstA + srcA * (1f - dstA)
                         if (newA > 0f) {
@@ -633,14 +556,11 @@ class PixelArtViewModel : ViewModel() {
                             finalA = newA
                         }
                     }
-                    
-                    // Optimization: if we are fully opaque, stop here
                     if (finalA >= 0.99f) return@forEach
                 }
             }
         }
 
-        // 2. Blend with background if still transparent
         if (finalA < 1f && state.backgroundColor != Color.Transparent) {
             val bg = state.backgroundColor
             val srcA = bg.alpha
@@ -656,13 +576,10 @@ class PixelArtViewModel : ViewModel() {
 
         Color(finalR, finalG, finalB, finalA).toArgb()
     } else {
-        // Current Layer Only
         val activeLayer = state.layers.find { it.id == state.activeLayerId }
         activeLayer?.bitmap?.getPixel(x, y) ?: Color.Transparent.toArgb()
     }
 }
-
-    // --- Selection Helper Methods ---
 
     private fun createRectSelection(rect: android.graphics.Rect) {
         val state = _projectState.value ?: return
