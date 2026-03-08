@@ -111,6 +111,7 @@ fun BitmapDrawer(
     drawColor: Color,
     drawLineStyle: DrawLineStyle = DrawLineStyle.None,
     helperGridParams: HelperGridParams = remember { HelperGridParams() },
+    historyBitmap: Bitmap? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -142,17 +143,20 @@ fun BitmapDrawer(
             val imageWidth = constraints.maxWidth
             val imageHeight = constraints.maxHeight
 
-            val drawImageBitmap by remember(imageWidth, imageHeight, backgroundColor) {
+            val drawImageBitmap by remember(imageWidth, imageHeight, backgroundColor, historyBitmap) {
                 derivedStateOf {
-                    imageBitmap.asAndroidBitmap().createScaledBitmap(
+                    val base = historyBitmap ?: imageBitmap.asAndroidBitmap()
+                    base.createScaledBitmap(
                         width = imageWidth,
                         height = imageHeight
                     ).apply {
-                        val canvas = AndroidCanvas(this)
-                        val paint = android.graphics.Paint().apply {
-                            color = backgroundColor.toArgb()
+                        if (historyBitmap == null) {
+                            val canvas = AndroidCanvas(this)
+                            val paint = android.graphics.Paint().apply {
+                                color = backgroundColor.toArgb()
+                            }
+                            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
                         }
-                        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
                     }.asImageBitmap()
                 }
             }
@@ -230,6 +234,15 @@ fun BitmapDrawer(
                 brushSoftness,
                 drawPathMode
             ) { mutableStateOf(Path()) }
+
+            var pathPoints by remember(
+                drawMode,
+                strokeWidth,
+                isEraserOn,
+                drawColor,
+                brushSoftness,
+                drawPathMode
+            ) { mutableStateOf(listOf<Offset>()) }
 
             var pathWithoutTransformations by remember(
                 drawMode,
@@ -424,7 +437,12 @@ fun BitmapDrawer(
 
                                 onAddPath(
                                     UiPathPaint(
-                                        path = drawPath,
+                                        path = UiDrawPath(
+                                            points = pathPoints,
+                                            drawDownPosition = drawDownPosition,
+                                            currentDrawPosition = currentDrawPosition,
+                                            pathMode = drawPathMode.toUi()
+                                        ),
                                         strokeWidth = strokeWidth,
                                         brushSoftness = 0.pt,
                                         drawColor = Color.Transparent,
@@ -458,6 +476,7 @@ fun BitmapDrawer(
                                                 currentDrawPosition.y
                                             )
                                         }
+                                        pathPoints = pathPoints + currentDrawPosition
 
                                         drawArrowsIfNeeded(drawPath)
                                     },
@@ -473,6 +492,7 @@ fun BitmapDrawer(
                                                 currentDrawPosition.y
                                             )
                                         }
+                                        pathPoints = pathPoints + currentDrawPosition
                                     },
                                     onFloodFill = { tolerance ->
                                         outputImage
@@ -481,6 +501,7 @@ fun BitmapDrawer(
                                                 tolerance = tolerance
                                             )
                                             ?.let { drawPath = it }
+                                        pathPoints = listOf(currentDrawPosition)
                                     },
                                     onGlobalReplace = { tolerance ->
                                         outputImage
@@ -489,13 +510,18 @@ fun BitmapDrawer(
                                                 tolerance = tolerance
                                             )
                                             ?.let { drawPath = it }
+                                        pathPoints = listOf(currentDrawPosition)
                                     }
-                                    )
-                                    }
+                                )
 
                                 onAddPath(
                                     UiPathPaint(
-                                        path = drawPath,
+                                        path = UiDrawPath(
+                                            points = pathPoints,
+                                            drawDownPosition = drawDownPosition,
+                                            currentDrawPosition = currentDrawPosition,
+                                            pathMode = drawPathMode.toUi()
+                                        ),
                                         strokeWidth = strokeWidth,
                                         brushSoftness = brushSoftness,
                                         drawColor = drawColor,

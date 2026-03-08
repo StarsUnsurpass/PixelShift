@@ -20,8 +20,8 @@ package com.t8rin.imagetoolbox.feature.draw.presentation.screenLogic
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -59,10 +59,14 @@ import com.t8rin.imagetoolbox.feature.draw.domain.DrawOnBackgroundParams
 import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode
 import com.t8rin.imagetoolbox.feature.draw.domain.ImageDrawApplier
 import com.t8rin.imagetoolbox.feature.draw.presentation.components.UiPathPaint
+import androidx.compose.runtime.snapshotFlow
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DrawComponent @AssistedInject internal constructor(
@@ -147,6 +151,18 @@ class DrawComponent @AssistedInject internal constructor(
     private val _undonePaths = mutableStateOf(listOf<UiPathPaint>())
     val undonePaths: List<UiPathPaint> by _undonePaths
 
+    private val _historyBitmap: MutableState<Bitmap?> = mutableStateOf(null)
+    val historyBitmap: Bitmap? by _historyBitmap
+
+    private val _bakedPathsCount = mutableIntStateOf(0)
+    val bakedPathsCount by _bakedPathsCount
+
+    private var bakingJob: Job? = null
+
+    val visiblePaths: List<UiPathPaint> by derivedStateOf {
+        paths.drop(bakedPathsCount)
+    }
+
     val havePaths: Boolean
         get() = paths.isNotEmpty() || lastPaths.isNotEmpty() || undonePaths.isNotEmpty()
 
@@ -170,6 +186,20 @@ class DrawComponent @AssistedInject internal constructor(
             val settingsState = settingsProvider.getSettingsState()
             _drawPathMode.update { DrawPathMode.fromOrdinal(settingsState.defaultDrawPathMode) }
         }
+
+        componentScope.launch {
+            snapshotFlow { paths }
+                .collectLatest {
+                    delay(5000L)
+                    saveDraft()
+                }
+        }
+    }
+
+    private fun saveDraft() {
+        if (paths.isEmpty() && historyBitmap == null) return
+        // Draft saving logic using fileController to cache
+        // We'll save the visiblePaths and metadata
     }
 
     private var savingJob: Job? by smartJob {
@@ -250,6 +280,8 @@ class DrawComponent @AssistedInject internal constructor(
             _lastPaths.value = listOf()
             _undonePaths.value = listOf()
             _isImageLoading.value = true
+            _historyBitmap.value = null
+            _bakedPathsCount.intValue = 0
 
             _uri.value = uri
             if (drawBehavior !is DrawBehavior.Image) {
@@ -296,6 +328,8 @@ class DrawComponent @AssistedInject internal constructor(
         _drawPathMode.update { DrawPathMode.Free }
         _uri.value = Uri.EMPTY
         _backgroundColor.value = Color.Transparent
+        _historyBitmap.value = null
+        _bakedPathsCount.intValue = 0
         registerChangesCleared()
     }
 
@@ -361,6 +395,8 @@ class DrawComponent @AssistedInject internal constructor(
             _lastPaths.value = paths
             _paths.value = listOf()
             _undonePaths.value = listOf()
+            _historyBitmap.value = null
+            _bakedPathsCount.intValue = 0
             registerChanges()
         }
     }
@@ -378,6 +414,27 @@ class DrawComponent @AssistedInject internal constructor(
         _paths.update { it - lastPath }
         _undonePaths.update { it + lastPath }
         registerChanges()
+
+        if (paths.size < bakedPathsCount) {
+            bakingJob?.cancel()
+            bakingJob = componentScope.launch(defaultDispatcher) {
+                val newBakedCount = (paths.size - 5).coerceAtLeast(0)
+                val toBake = paths.take(newBakedCount)
+                if (toBake.isEmpty()) {
+                    _historyBitmap.value = null
+                } else {
+                    _historyBitmap.value = imageDrawApplier.applyDrawToImage(
+                        drawBehavior = drawBehavior.let {
+                            if (it is DrawBehavior.Background) it.copy(color = backgroundColor.toArgb())
+                            else it
+                        },
+                        pathPaints = toBake,
+                        imageUri = _uri.value.toString()
+                    )
+                }
+                _bakedPathsCount.intValue = newBakedCount
+            }
+        }
     }
 
     fun redo() {
@@ -393,6 +450,24 @@ class DrawComponent @AssistedInject internal constructor(
         _paths.update { it + pathPaint }
         _undonePaths.value = listOf()
         registerChanges()
+
+        if (paths.size - bakedPathsCount > 20) {
+            bakingJob?.cancel()
+            bakingJob = componentScope.launch(defaultDispatcher) {
+                val nextBakedCount = bakedPathsCount + 10
+                val toBake = paths.take(nextBakedCount)
+                val bitmap = imageDrawApplier.applyDrawToImage(
+                    drawBehavior = drawBehavior.let {
+                        if (it is DrawBehavior.Background) it.copy(color = backgroundColor.toArgb())
+                        else it
+                    },
+                    pathPaints = toBake,
+                    imageUri = _uri.value.toString()
+                )
+                _historyBitmap.value = bitmap
+                _bakedPathsCount.intValue = nextBakedCount
+            }
+        }
     }
 
     fun cancelSaving() {

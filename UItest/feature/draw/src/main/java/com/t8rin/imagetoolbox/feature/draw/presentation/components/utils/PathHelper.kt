@@ -44,6 +44,224 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+object PathBuilder {
+    fun drawPolygon(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset,
+        vertices: Int,
+        rotationDegrees: Int,
+        isRegular: Boolean,
+    ): Path? {
+        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
+            val top = max(drawDownPosition.y, currentDrawPosition.y)
+            val left = min(drawDownPosition.x, currentDrawPosition.x)
+            val bottom = min(drawDownPosition.y, currentDrawPosition.y)
+            val right = max(drawDownPosition.x, currentDrawPosition.x)
+
+            val width = right - left
+            val height = bottom - top
+            val centerX = (left + right) / 2f
+            val centerY = (top + bottom) / 2f
+            val radius = min(width, height) / 2f
+
+            return Path().apply {
+                if (isRegular) {
+                    val angleStep = 360f / vertices
+                    val startAngle = rotationDegrees - 270.0
+                    moveTo(
+                        centerX + radius * cos(Math.toRadians(startAngle)).toFloat(),
+                        centerY + radius * sin(Math.toRadians(startAngle)).toFloat()
+                    )
+                    for (i in 1 until vertices) {
+                        val angle = startAngle + i * angleStep
+                        lineTo(
+                            centerX + radius * cos(Math.toRadians(angle)).toFloat(),
+                            centerY + radius * sin(Math.toRadians(angle)).toFloat()
+                        )
+                    }
+                } else {
+                    for (i in 0 until vertices) {
+                        val angle = i * (360f / vertices) + rotationDegrees - 270.0
+                        val x =
+                            centerX + width / 2f * cos(Math.toRadians(angle)).toFloat()
+                        val y =
+                            centerY + height / 2f * sin(Math.toRadians(angle)).toFloat()
+                        if (i == 0) {
+                            moveTo(x, y)
+                        } else {
+                            lineTo(x, y)
+                        }
+                    }
+                }
+                close()
+            }
+        }
+        return null
+    }
+
+    fun drawStar(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset,
+        vertices: Int,
+        innerRadiusRatio: Float,
+        rotationDegrees: Int,
+        isRegular: Boolean,
+    ): Path? {
+        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
+            val top = max(drawDownPosition.y, currentDrawPosition.y)
+            val left = min(drawDownPosition.x, currentDrawPosition.x)
+            val bottom = min(drawDownPosition.y, currentDrawPosition.y)
+            val right = max(drawDownPosition.x, currentDrawPosition.x)
+
+            val centerX = (left + right) / 2f
+            val centerY = (top + bottom) / 2f
+            val width = right - left
+            val height = bottom - top
+
+            return Path().apply {
+                if (isRegular) {
+                    val outerRadius = min(width, height) / 2f
+                    val innerRadius = outerRadius * innerRadiusRatio
+
+                    val angleStep = 360f / (2 * vertices)
+                    val startAngle = rotationDegrees - 270.0
+
+                    for (i in 0 until (2 * vertices)) {
+                        val radius = if (i % 2 == 0) outerRadius else innerRadius
+                        val angle = startAngle + i * angleStep
+                        val x = centerX + radius * cos(Math.toRadians(angle)).toFloat()
+                        val y = centerY + radius * sin(Math.toRadians(angle)).toFloat()
+                        if (i == 0) {
+                            moveTo(x, y)
+                        } else {
+                            lineTo(x, y)
+                        }
+                    }
+                } else {
+                    for (i in 0 until (2 * vertices)) {
+                        val angle = i * (360f / (2 * vertices)) + rotationDegrees - 270.0
+                        val radiusX =
+                            (if (i % 2 == 0) width else width * innerRadiusRatio) / 2f
+                        val radiusY =
+                            (if (i % 2 == 0) height else height * innerRadiusRatio) / 2f
+
+                        val x = centerX + radiusX * cos(Math.toRadians(angle)).toFloat()
+                        val y = centerY + radiusY * sin(Math.toRadians(angle)).toFloat()
+                        if (i == 0) {
+                            moveTo(x, y)
+                        } else {
+                            lineTo(x, y)
+                        }
+                    }
+                }
+                close()
+            }
+        }
+        return null
+    }
+
+    fun drawTriangle(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset
+    ): Path? {
+        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
+            return Path().apply {
+                moveTo(drawDownPosition.x, drawDownPosition.y)
+
+                lineTo(currentDrawPosition.x, drawDownPosition.y)
+                lineTo(
+                    (drawDownPosition.x + currentDrawPosition.x) / 2,
+                    currentDrawPosition.y
+                )
+                lineTo(drawDownPosition.x, drawDownPosition.y)
+                close()
+            }
+        }
+        return null
+    }
+
+    fun drawRect(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset,
+        rotationDegrees: Int,
+        cornerRadius: Float
+    ): Path? {
+        if (!drawDownPosition.isSpecified || !currentDrawPosition.isSpecified) return null
+
+        val left = min(drawDownPosition.x, currentDrawPosition.x)
+        val right = max(drawDownPosition.x, currentDrawPosition.x)
+        val top = min(drawDownPosition.y, currentDrawPosition.y)
+        val bottom = max(drawDownPosition.y, currentDrawPosition.y)
+
+        val width = right - left
+        val height = bottom - top
+        if (width <= 0f || height <= 0f) return null
+
+        val radius = min(width, height) * cornerRadius.coerceIn(0f, 0.5f)
+        val centerX = (left + right) / 2f
+        val centerY = (top + bottom) / 2f
+
+        val path = Path().apply {
+            addRoundRect(
+                RoundRect(
+                    rect = Rect(left, top, right, bottom),
+                    radius, radius
+                )
+            )
+        }
+
+        val matrix = Matrix().apply {
+            setRotate(rotationDegrees.toFloat(), centerX, centerY)
+        }
+
+        return path.asAndroidPath().apply { transform(matrix) }.asComposePath()
+    }
+
+    fun drawOval(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset
+    ): Path? {
+        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
+            return Path().apply {
+                addOval(
+                    Rect(
+                        top = max(
+                            drawDownPosition.y,
+                            currentDrawPosition.y
+                        ),
+                        left = min(
+                            drawDownPosition.x,
+                            currentDrawPosition.x
+                        ),
+                        bottom = min(
+                            drawDownPosition.y,
+                            currentDrawPosition.y
+                        ),
+                        right = max(
+                            drawDownPosition.x,
+                            currentDrawPosition.x
+                        ),
+                    )
+                )
+            }
+        }
+        return null
+    }
+
+    fun drawLine(
+        drawDownPosition: Offset,
+        currentDrawPosition: Offset
+    ): Path? {
+        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
+            return Path().apply {
+                moveTo(drawDownPosition.x, drawDownPosition.y)
+                lineTo(currentDrawPosition.x, currentDrawPosition.y)
+            }
+        }
+        return null
+    }
+}
+
 data class PathHelper(
     val drawDownPosition: Offset,
     val currentDrawPosition: Offset,
@@ -194,51 +412,13 @@ data class PathHelper(
         rotationDegrees: Int,
         isRegular: Boolean,
     ) {
-        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
-            val top = max(drawDownPosition.y, currentDrawPosition.y)
-            val left = min(drawDownPosition.x, currentDrawPosition.x)
-            val bottom = min(drawDownPosition.y, currentDrawPosition.y)
-            val right = max(drawDownPosition.x, currentDrawPosition.x)
-
-            val width = right - left
-            val height = bottom - top
-            val centerX = (left + right) / 2f
-            val centerY = (top + bottom) / 2f
-            val radius = min(width, height) / 2f
-
-            val newPath = Path().apply {
-                if (isRegular) {
-                    val angleStep = 360f / vertices
-                    val startAngle = rotationDegrees - 270.0
-                    moveTo(
-                        centerX + radius * cos(Math.toRadians(startAngle)).toFloat(),
-                        centerY + radius * sin(Math.toRadians(startAngle)).toFloat()
-                    )
-                    for (i in 1 until vertices) {
-                        val angle = startAngle + i * angleStep
-                        lineTo(
-                            centerX + radius * cos(Math.toRadians(angle)).toFloat(),
-                            centerY + radius * sin(Math.toRadians(angle)).toFloat()
-                        )
-                    }
-                } else {
-                    for (i in 0 until vertices) {
-                        val angle = i * (360f / vertices) + rotationDegrees - 270.0
-                        val x =
-                            centerX + width / 2f * cos(Math.toRadians(angle)).toFloat()
-                        val y =
-                            centerY + height / 2f * sin(Math.toRadians(angle)).toFloat()
-                        if (i == 0) {
-                            moveTo(x, y)
-                        } else {
-                            lineTo(x, y)
-                        }
-                    }
-                }
-                close()
-            }
-            onPathChange(newPath)
-        }
+        PathBuilder.drawPolygon(
+            drawDownPosition,
+            currentDrawPosition,
+            vertices,
+            rotationDegrees,
+            isRegular
+        )?.let(onPathChange)
     }
 
     fun drawStar(
@@ -247,151 +427,48 @@ data class PathHelper(
         rotationDegrees: Int,
         isRegular: Boolean,
     ) {
-        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
-            val top = max(drawDownPosition.y, currentDrawPosition.y)
-            val left = min(drawDownPosition.x, currentDrawPosition.x)
-            val bottom = min(drawDownPosition.y, currentDrawPosition.y)
-            val right = max(drawDownPosition.x, currentDrawPosition.x)
-
-            val centerX = (left + right) / 2f
-            val centerY = (top + bottom) / 2f
-            val width = right - left
-            val height = bottom - top
-
-            val newPath = Path().apply {
-                if (isRegular) {
-                    val outerRadius = min(width, height) / 2f
-                    val innerRadius = outerRadius * innerRadiusRatio
-
-                    val angleStep = 360f / (2 * vertices)
-                    val startAngle = rotationDegrees - 270.0
-
-                    for (i in 0 until (2 * vertices)) {
-                        val radius = if (i % 2 == 0) outerRadius else innerRadius
-                        val angle = startAngle + i * angleStep
-                        val x = centerX + radius * cos(Math.toRadians(angle)).toFloat()
-                        val y = centerY + radius * sin(Math.toRadians(angle)).toFloat()
-                        if (i == 0) {
-                            moveTo(x, y)
-                        } else {
-                            lineTo(x, y)
-                        }
-                    }
-                } else {
-                    for (i in 0 until (2 * vertices)) {
-                        val angle = i * (360f / (2 * vertices)) + rotationDegrees - 270.0
-                        val radiusX =
-                            (if (i % 2 == 0) width else width * innerRadiusRatio) / 2f
-                        val radiusY =
-                            (if (i % 2 == 0) height else height * innerRadiusRatio) / 2f
-
-                        val x = centerX + radiusX * cos(Math.toRadians(angle)).toFloat()
-                        val y = centerY + radiusY * sin(Math.toRadians(angle)).toFloat()
-                        if (i == 0) {
-                            moveTo(x, y)
-                        } else {
-                            lineTo(x, y)
-                        }
-                    }
-                }
-                close()
-            }
-
-            onPathChange(newPath)
-        }
+        PathBuilder.drawStar(
+            drawDownPosition,
+            currentDrawPosition,
+            vertices,
+            innerRadiusRatio,
+            rotationDegrees,
+            isRegular
+        )?.let(onPathChange)
     }
 
     fun drawTriangle() {
-        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
-            val newPath = Path().apply {
-                moveTo(drawDownPosition.x, drawDownPosition.y)
-
-                lineTo(currentDrawPosition.x, drawDownPosition.y)
-                lineTo(
-                    (drawDownPosition.x + currentDrawPosition.x) / 2,
-                    currentDrawPosition.y
-                )
-                lineTo(drawDownPosition.x, drawDownPosition.y)
-                close()
-            }
-            onPathChange(newPath)
-        }
+        PathBuilder.drawTriangle(
+            drawDownPosition,
+            currentDrawPosition
+        )?.let(onPathChange)
     }
 
     fun drawRect(
         rotationDegrees: Int,
         cornerRadius: Float
     ) {
-        if (!drawDownPosition.isSpecified || !currentDrawPosition.isSpecified) return
-
-        val left = min(drawDownPosition.x, currentDrawPosition.x)
-        val right = max(drawDownPosition.x, currentDrawPosition.x)
-        val top = min(drawDownPosition.y, currentDrawPosition.y)
-        val bottom = max(drawDownPosition.y, currentDrawPosition.y)
-
-        val width = right - left
-        val height = bottom - top
-        if (width <= 0f || height <= 0f) return
-
-        val radius = min(width, height) * cornerRadius.coerceIn(0f, 0.5f)
-        val centerX = (left + right) / 2f
-        val centerY = (top + bottom) / 2f
-
-        val path = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    rect = Rect(left, top, right, bottom),
-                    radius, radius
-                )
-            )
-        }
-
-        val matrix = Matrix().apply {
-            setRotate(rotationDegrees.toFloat(), centerX, centerY)
-        }
-
-
-        onPathChange(
-            path.asAndroidPath().apply { transform(matrix) }.asComposePath()
-        )
+        PathBuilder.drawRect(
+            drawDownPosition,
+            currentDrawPosition,
+            rotationDegrees,
+            cornerRadius
+        )?.let(onPathChange)
     }
 
     fun drawOval() {
-        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
-            val newPath = Path().apply {
-                addOval(
-                    Rect(
-                        top = max(
-                            drawDownPosition.y,
-                            currentDrawPosition.y
-                        ),
-                        left = min(
-                            drawDownPosition.x,
-                            currentDrawPosition.x
-                        ),
-                        bottom = min(
-                            drawDownPosition.y,
-                            currentDrawPosition.y
-                        ),
-                        right = max(
-                            drawDownPosition.x,
-                            currentDrawPosition.x
-                        ),
-                    )
-                )
-            }
-            onPathChange(newPath)
-        }
+        PathBuilder.drawOval(
+            drawDownPosition,
+            currentDrawPosition
+        )?.let(onPathChange)
     }
 
     fun drawLine() {
-        if (drawDownPosition.isSpecified && currentDrawPosition.isSpecified) {
-            val newPath = Path().apply {
-                moveTo(drawDownPosition.x, drawDownPosition.y)
-                lineTo(currentDrawPosition.x, currentDrawPosition.y)
-            }
+        PathBuilder.drawLine(
+            drawDownPosition,
+            currentDrawPosition
+        )?.let { newPath ->
             drawArrowsScope.drawArrowsIfNeeded(newPath)
-
             onPathChange(newPath)
         }
     }

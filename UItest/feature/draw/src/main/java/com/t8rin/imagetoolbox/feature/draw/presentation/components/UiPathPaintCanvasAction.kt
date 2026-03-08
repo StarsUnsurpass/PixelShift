@@ -91,11 +91,16 @@ internal fun Canvas.UiPathPaintCanvasAction(
     onClearDrawPath: () -> Unit,
     onRequestFiltering: suspend (Bitmap, List<Filter<*>>) -> Bitmap?,
 ) = with(nativeCanvas) {
-    val (nonScaledPath, strokeWidth, brushSoftness, drawColor, isEraserOn, drawMode, size, drawPathMode, drawLineStyle) = uiPathPaint
+    val (uiDrawPath, strokeWidth, brushSoftness, drawColor, isEraserOn, drawMode, size, drawPathMode, drawLineStyle) = uiPathPaint
 
-    val path by remember(nonScaledPath, canvasSize, size) {
+    val path by remember(uiDrawPath, canvasSize, size) {
         derivedStateOf {
-            nonScaledPath.scaleToFitCanvas(
+            uiDrawPath.createPath(
+                strokeWidth = strokeWidth,
+                canvasSize = canvasSize,
+                isEraserOn = isEraserOn,
+                drawMode = drawMode
+            ).scaleToFitCanvas(
                 currentSize = canvasSize,
                 oldSize = size
             ).asAndroidPath()

@@ -278,7 +278,8 @@ fun DrawContent(
                 val aspectRatio = imageBitmap.width / imageBitmap.height.toFloat()
                 BitmapDrawer(
                     imageBitmap = imageBitmap,
-                    paths = component.paths,
+                    paths = component.visiblePaths,
+                    historyBitmap = component.historyBitmap,
                     strokeWidth = strokeWidth,
                     brushSoftness = brushSoftness,
                     drawColor = drawColor.copy(alpha),

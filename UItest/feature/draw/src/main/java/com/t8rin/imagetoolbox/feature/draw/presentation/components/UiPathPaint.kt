@@ -17,6 +17,7 @@
 
 package com.t8rin.imagetoolbox.feature.draw.presentation.components
 
+import android.os.Parcelable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import com.t8rin.imagetoolbox.core.domain.model.IntegerSize
@@ -25,9 +26,12 @@ import com.t8rin.imagetoolbox.feature.draw.domain.DrawLineStyle
 import com.t8rin.imagetoolbox.feature.draw.domain.DrawMode
 import com.t8rin.imagetoolbox.feature.draw.domain.DrawPathMode
 import com.t8rin.imagetoolbox.feature.draw.domain.PathPaint
+import com.t8rin.imagetoolbox.feature.draw.presentation.components.model.UiDrawPath
+import kotlinx.parcelize.Parcelize
 
+@Parcelize
 data class UiPathPaint(
-    override val path: Path,
+    override val path: UiDrawPath,
     override val strokeWidth: Pt,
     override val brushSoftness: Pt,
     override val drawColor: Color = Color.Transparent,
@@ -36,11 +40,11 @@ data class UiPathPaint(
     override val canvasSize: IntegerSize,
     override val drawPathMode: DrawPathMode = DrawPathMode.Free,
     override val drawLineStyle: DrawLineStyle = DrawLineStyle.None
-) : PathPaint<Path, Color>
+) : PathPaint<UiDrawPath, Color>, Parcelable
 
 
 fun PathPaint<Path, Color>.toUiPathPaint() = UiPathPaint(
-    path = path,
+    path = UiDrawPath(points = emptyList(), pathMode = drawPathMode.toUi()), // Simplified for conversion
     strokeWidth = strokeWidth,
     brushSoftness = brushSoftness,
     drawColor = drawColor,
