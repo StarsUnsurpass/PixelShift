@@ -113,7 +113,7 @@ fun NewProjectSheet(
                     Text("选择标准尺寸，一键进入工作台", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                 }
                 
-                Text("游戏资源 (Game Assets)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("游戏资源", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SimpleFlowRow(
                     verticalGap = 8.dp,
                     horizontalGap = 8.dp
@@ -126,7 +126,7 @@ fun NewProjectSheet(
                 }
 
                 // Systems Category
-                Text("常见系统 (Retro Systems)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("经典系统", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SimpleFlowRow(
                     verticalGap = 8.dp,
                     horizontalGap = 8.dp
@@ -173,7 +173,7 @@ fun NewProjectSheet(
                         }) {
                             Icon(
                                 if (uiState.isAspectRatioLocked) Icons.Default.Link else Icons.Default.LinkOff,
-                                contentDescription = "Lock Aspect Ratio",
+                                contentDescription = "锁定宽高比",
                                 tint = if (uiState.isAspectRatioLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -181,7 +181,7 @@ fun NewProjectSheet(
                              view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
                              viewModel.swapDimensions() 
                         }) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Swap Dimensions")
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "交换宽高")
                         }
                     }
 

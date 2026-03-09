@@ -71,7 +71,7 @@ fun FormatConversionScreen(
 
     AdaptiveLayoutScreen(
             title = {
-                Column {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("格式转换")
                     if (uiState.uris.isNotEmpty()) {
                         Text(
@@ -83,6 +83,7 @@ fun FormatConversionScreen(
                 }
             },
             onGoBack = { navController.popBackStack() },
+            topAppBarType = com.example.pixelshift.ui.components.EnhancedTopAppBarType.Center,
             imagePreview = {
                 Box(
                         modifier =

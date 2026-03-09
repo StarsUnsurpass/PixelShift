@@ -66,45 +66,45 @@ fun ToolSettingsSheet(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-                Text("Tool Settings / 工具设置", style = MaterialTheme.typography.titleLarge)
+                Text("工具设置", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(16.dp))
 
                 // Symmetry Section
-                Text("Symmetry / 对称绘制", style = MaterialTheme.typography.titleMedium)
+                Text("对称绘制", style = MaterialTheme.typography.titleMedium)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Text("X Axis", modifier = Modifier.weight(1f))
+                        Text("X 轴", modifier = Modifier.weight(1f))
                         Switch(checked = symmetry.xEnabled, onCheckedChange = onXSymmetryChange)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Text("Y Axis", modifier = Modifier.weight(1f))
+                        Text("Y 轴", modifier = Modifier.weight(1f))
                         Switch(checked = symmetry.yEnabled, onCheckedChange = onYSymmetryChange)
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Reference Image Section
-                Text("Reference / 参考图", style = MaterialTheme.typography.titleMedium)
+                Text("参考图", style = MaterialTheme.typography.titleMedium)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(onClick = onReferenceImagePick, modifier = Modifier.weight(1f)) {
-                        Text("Pick Image")
+                        Text("选择图片")
                     }
                     if (referenceVisible) {
                         OutlinedButton(onClick = onReferenceClear, modifier = Modifier.weight(1f)) {
-                            Text("Clear")
+                            Text("清除")
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Brush Size
-                Text("Brush Size / 画笔大小: ${settings.size}px", style = MaterialTheme.typography.titleMedium)
+                Text("画笔大小: ${settings.size}px", style = MaterialTheme.typography.titleMedium)
                 Slider(
                         value = settings.size.toFloat(),
                         onValueChange = { onSizeChange(it.toInt()) },
@@ -120,7 +120,7 @@ fun ToolSettingsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("Pixel Perfect (1px only)")
+                        Text("完美像素 (仅 1px)")
                         Switch(
                                 checked = settings.pixelPerfect,
                                 onCheckedChange = onPixelPerfectChange
@@ -130,7 +130,7 @@ fun ToolSettingsSheet(
                 Spacer(Modifier.height(16.dp))
 
                 // Eraser Settings
-                Text("Eraser / Background", style = MaterialTheme.typography.titleMedium)
+                Text("橡皮擦 / 背景", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
 
                 Row(
@@ -138,7 +138,7 @@ fun ToolSettingsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("Erase to Background")
+                        Text("擦除至背景色")
                         Switch(
                                 checked = settings.eraseToBackground,
                                 onCheckedChange = onEraseToBackgroundChange
@@ -152,7 +152,7 @@ fun ToolSettingsSheet(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                         ) {
-                                Text("Secondary Color:")
+                                Text("备选颜色:")
                                 val colors =
                                         listOf(
                                                 Color.White,
@@ -207,28 +207,28 @@ fun ToolSettingsSheet(
                 Spacer(Modifier.height(16.dp))
 
                 // Bucket Fill Settings
-                Text("Bucket Fill / 油漆桶", style = MaterialTheme.typography.titleMedium)
+                Text("油漆桶填充", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("连续填充 (Contiguous)")
+                        Text("连续填充")
                         Switch(checked = settings.contiguous, onCheckedChange = onContiguousChange)
                 }
 
                 Spacer(Modifier.height(16.dp))
 
                 // Shape Options
-                Text("Shape Options / 形状", style = MaterialTheme.typography.titleMedium)
+                Text("形状选项", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("填充矩形 (Fill Rectangle)")
+                        Text("填充矩形")
                         Switch(
                                 checked = settings.rectFilled,
                                 onCheckedChange = onRectFilledChange
@@ -240,7 +240,7 @@ fun ToolSettingsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("填充圆形 (Fill Circle)")
+                        Text("填充圆形")
                         Switch(
                                 checked = settings.circleFilled,
                                 onCheckedChange = onCircleFilledChange
@@ -250,14 +250,14 @@ fun ToolSettingsSheet(
                 Spacer(Modifier.height(16.dp))
 
                 // Eyedropper Settings
-                Text("Eyedropper / 取色", style = MaterialTheme.typography.titleMedium)
+                Text("吸管取色", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                 ) {
-                        Text("取样所有图层 (Sample All Layers)")
+                        Text("采样所有图层")
                         Switch(
                                 checked = settings.sampleAllLayers,
                                 onCheckedChange = onSampleAllLayersChange
@@ -266,7 +266,7 @@ fun ToolSettingsSheet(
 
                 if (hasSelection) {
                         Spacer(Modifier.height(16.dp))
-                        Text("Transformation / 选区变换", style = MaterialTheme.typography.titleMedium)
+                        Text("选区变换", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -275,15 +275,15 @@ fun ToolSettingsSheet(
                                 OutlinedButton(
                                         onClick = onRotateSelection,
                                         modifier = Modifier.weight(1f)
-                                ) { Text("Rot 90") }
+                                ) { Text("旋转 90°") }
                                 OutlinedButton(
                                         onClick = onFlipHorizontal,
                                         modifier = Modifier.weight(1f)
-                                ) { Text("Flip H") }
+                                ) { Text("水平翻转") }
                                 OutlinedButton(
                                         onClick = onFlipVertical,
                                         modifier = Modifier.weight(1f)
-                                ) { Text("Flip V") }
+                                ) { Text("垂直翻转") }
                         }
                         Button(
                                 onClick = onClearSelection,
@@ -291,7 +291,7 @@ fun ToolSettingsSheet(
                                 colors = ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.error
                                         )
-                        ) { Text("Clear Selection / 取消选区") }
+                        ) { Text("取消选区") }
                 }
 
                 Spacer(Modifier.height(32.dp))

@@ -29,7 +29,8 @@ fun AdaptiveLayoutScreen(
         contentPadding: Dp = 16.dp,
         showImagePreviewAsStickyHeader: Boolean = true,
         shouldDisableBackHandler: Boolean = false,
-        floatingActionButton: @Composable () -> Unit = {}
+        floatingActionButton: @Composable () -> Unit = {},
+        topAppBarType: EnhancedTopAppBarType = EnhancedTopAppBarType.Medium
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -49,7 +50,8 @@ fun AdaptiveLayoutScreen(
                             }
                         },
                         actions = actions,
-                        scrollBehavior = scrollBehavior
+                        scrollBehavior = scrollBehavior,
+                        type = topAppBarType
                 )
 
                 if (isPortrait) {

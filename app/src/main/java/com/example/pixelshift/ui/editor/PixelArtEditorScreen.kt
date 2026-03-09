@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -20,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -125,7 +125,7 @@ fun PixelArtEditorScreen(
 
     Scaffold(
             topBar = {
-                TopAppBar(
+                CenterAlignedTopAppBar(
                         title = { 
                             Text(
                                 text = "像素编辑器",
@@ -136,15 +136,15 @@ fun PixelArtEditorScreen(
                         },
                         navigationIcon = {
                             IconButton(onClick = { navController.popBackStack() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                             }
                         },
                         actions = {
                             IconButton(onClick = { loadProjectLauncher.launch(arrayOf("application/octet-stream")) }) {
-                                Icon(Icons.Default.Folder, contentDescription = "Load Project")
+                                Icon(Icons.Default.Folder, contentDescription = "加载项目")
                             }
                             IconButton(onClick = { saveProjectLauncher.launch("my_drawing.pxl") }) {
-                                Icon(Icons.Default.Save, contentDescription = "Save Project")
+                                Icon(Icons.Default.Save, contentDescription = "保存项目")
                             }
                             IconButton(
                                 onClick = { viewModel.undo() },
@@ -152,7 +152,7 @@ fun PixelArtEditorScreen(
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Undo, 
-                                    contentDescription = "Undo",
+                                    contentDescription = "撤销",
                                     tint = if (canUndo) Color.Unspecified else Color.Gray.copy(alpha = 0.5f)
                                 )
                             }
@@ -162,18 +162,18 @@ fun PixelArtEditorScreen(
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Redo, 
-                                    contentDescription = "Redo",
+                                    contentDescription = "重做",
                                     tint = if (canRedo) Color.Unspecified else Color.Gray.copy(alpha = 0.5f)
                                 )
                             }
                             IconButton(onClick = { showToolSettingsSheet = true }) {
-                                Icon(Icons.Default.Tune, contentDescription = "Tool Settings")
+                                Icon(Icons.Default.Tune, contentDescription = "工具设置")
                             }
                             IconButton(onClick = { showLayerSheet = true }) {
-                                Icon(Icons.Default.Layers, contentDescription = "Layers")
+                                Icon(Icons.Default.Layers, contentDescription = "图层")
                             }
                             IconButton(onClick = { showExportDialog = true }) {
-                                Icon(Icons.Default.Save, contentDescription = "Save")
+                                Icon(Icons.Default.Save, contentDescription = "保存")
                             }
                         }
                 )

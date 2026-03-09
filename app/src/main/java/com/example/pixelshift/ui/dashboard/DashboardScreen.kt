@@ -34,6 +34,7 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                 title = { Text("PixelShift 像素转换") },
                 onGoBack = { /* No back action on Dashboard root */},
                 shouldDisableBackHandler = true,
+                topAppBarType = com.example.pixelshift.ui.components.EnhancedTopAppBarType.Center,
                 actions = {
                         IconButton(
                                 onClick = {
@@ -43,7 +44,7 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                                         )
                                         navController.navigate(Screen.Settings.route)
                                 }
-                        ) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
+                        ) { Icon(Icons.Default.Settings, contentDescription = "设置") }
                 },
                 floatingActionButton = {
                     androidx.compose.material3.FloatingActionButton(
@@ -52,7 +53,7 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                             showNewProjectSheet = true
                         }
                     ) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = "New Project")
+                        Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = "新建项目")
                     }
                 },
                 controls = {
