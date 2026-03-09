@@ -88,9 +88,15 @@ fun EditorScreen(
                 text = "转换设置",
                 infoTitle = "关于8位转换",
                 infoContent = "8位转换通过减少颜色数量和像素化来模拟复古游戏风格。\n\n" +
+                        "- 平滑处理: 开启后在像素化前对原图进行平滑缩放，使生成的像素色彩更均匀，减少生硬的锯齿。\n" +
                         "- 像素大小: 增加此值会使图像更具像素感。\n" +
                         "- 对比度: 调整图像的明暗对比，影响转换后的细节。\n" +
-                        "- 抖动算法: 在颜色受限的情况下，通过点阵模拟过渡色。"
+                        "- 抖动算法: 在颜色受限的情况下，通过点阵模拟过渡色。\n\n" +
+                        "抖动算法说明：\n" +
+                        "1. 无 (None): 不使用抖动，颜色过渡会有明显的色阶，适合追求极致简洁或高对比度的风格。\n" +
+                        "2. Floyd-Steinberg: 最经典的扩散抖动算法，能产生非常自然的颗粒感，适合照片类图片的转换。\n" +
+                        "3. Bayer: 有序抖动算法，会产生规律的十字网格点阵，具有独特的复古数字印刷感。\n" +
+                        "4. Atkinson: 类似于Floyd-Steinberg但对比度更高，能保留更多留白，常用于早期麦金塔电脑的风格。"
             )
 
             Card(
@@ -101,6 +107,19 @@ fun EditorScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Smooth Image Toggle (Now first)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("平滑处理", style = MaterialTheme.typography.labelLarge)
+                        Switch(
+                            checked = uiState.config.smoothImage,
+                            onCheckedChange = { viewModel.toggleSmoothImage(it) }
+                        )
+                    }
+
                     // Pixel Size
                     Column {
                         Text("像素大小: ${uiState.config.pixelSize}x", style = MaterialTheme.typography.labelLarge)
@@ -138,19 +157,6 @@ fun EditorScreen(
                                 )
                             }
                         }
-                    }
-
-                    // Smooth Image Toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("平滑处理", style = MaterialTheme.typography.labelLarge)
-                        Switch(
-                            checked = uiState.config.smoothImage,
-                            onCheckedChange = { viewModel.toggleSmoothImage(it) }
-                        )
                     }
                 }
             }
