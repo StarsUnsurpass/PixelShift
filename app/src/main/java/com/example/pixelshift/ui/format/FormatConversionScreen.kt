@@ -37,7 +37,8 @@ import com.example.pixelshift.util.HapticFeedbackManager
 fun FormatConversionScreen(
         navController: NavController,
         viewModel: FormatConversionViewModel = viewModel(),
-        themeViewModel: ThemeViewModel? = null
+        themeViewModel: ThemeViewModel? = null,
+        mode: String? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -45,6 +46,12 @@ fun FormatConversionScreen(
 
     val themeState = themeViewModel?.themeState?.collectAsState()?.value
     val hapticEnabled = themeState?.hapticFeedbackEnabled ?: true
+
+    LaunchedEffect(mode) {
+        if (mode == "scaling") {
+            viewModel.setUseTargetSizeScaling(true)
+        }
+    }
 
     val launcher =
             rememberLauncherForActivityResult(

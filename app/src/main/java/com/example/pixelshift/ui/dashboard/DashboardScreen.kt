@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -78,7 +79,19 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                                                 view,
                                                 hapticEnabled
                                         )
-                                        navController.navigate(Screen.FormatConversion.route)
+                                        navController.navigate(Screen.FormatConversion.createRoute())
+                                }
+                        )
+                        PreferenceItem(
+                                title = "尺寸缩放",
+                                subtitle = "按占用大小自动缩放图片",
+                                icon = Icons.Rounded.AspectRatio,
+                                onClick = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                        navController.navigate(Screen.FormatConversion.createRoute("scaling"))
                                 }
                         )
                         // Add more tools here as PreferenceItems

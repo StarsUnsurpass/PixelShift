@@ -9,6 +9,8 @@ sealed class Screen(val route: String) {
         fun createRoute(width: Int, height: Int, transparent: Boolean, backgroundColor: Int?) =
                 "pixel_art_editor/$width/$height/$transparent/${backgroundColor ?: 0}"
     }
-    object FormatConversion : Screen("format_conversion")
+    object FormatConversion : Screen("format_conversion?mode={mode}") {
+        fun createRoute(mode: String? = null) = "format_conversion?mode=$mode"
+    }
     object Settings : Screen("settings")
 }

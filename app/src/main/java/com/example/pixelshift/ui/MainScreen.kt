@@ -29,8 +29,12 @@ fun MainScreen(themeViewModel: ThemeViewModel) {
             composable(Screen.Editor.route) {
                 EditorScreen(navController, themeViewModel = themeViewModel)
             }
-            composable(Screen.FormatConversion.route) {
-                FormatConversionScreen(navController, themeViewModel = themeViewModel)
+            composable(
+                    route = Screen.FormatConversion.route,
+                    arguments = listOf(navArgument("mode") { type = NavType.StringType; nullable = true })
+            ) { backStackEntry ->
+                val mode = backStackEntry.arguments?.getString("mode")
+                FormatConversionScreen(navController, themeViewModel = themeViewModel, mode = mode)
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(navController, themeViewModel = themeViewModel)
