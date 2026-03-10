@@ -27,6 +27,7 @@ data class FormatConversionUiState(
         val quality: Int = 100,
         val useTargetSizeScaling: Boolean = false,
         val targetFileSizeKB: Int = 500,
+        val isFormatSelectionEnabled: Boolean = true,
         val conversionProgress: Int = 0
 )
 
@@ -73,6 +74,10 @@ class FormatConversionViewModel : ViewModel() {
         _uiState.update { it.copy(targetFileSizeKB = kb) }
     }
 
+    fun setFormatSelectionEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isFormatSelectionEnabled = enabled) }
+    }
+
     private fun loadPreview() {
         // This is handled by loadPreview(context) which is called from UI
     }
@@ -100,10 +105,11 @@ class FormatConversionViewModel : ViewModel() {
             _uiState.update { it.copy(isSaving = true, conversionProgress = 0) }
             var successCount = 0
             val uris = uiState.value.uris
-            val targetFormat = uiState.value.targetFormat
+            val globalTargetFormat = uiState.value.targetFormat
             val quality = uiState.value.quality
             val useScaling = uiState.value.useTargetSizeScaling
             val targetSizeLimit = uiState.value.targetFileSizeKB * 1024L
+            val formatSelectionEnabled = uiState.value.isFormatSelectionEnabled
 
             withContext(Dispatchers.IO) {
                 uris.forEachIndexed { index, uri ->
@@ -112,6 +118,13 @@ class FormatConversionViewModel : ViewModel() {
                         var bitmap = BitmapFactory.decodeStream(inputStream)
 
                         if (bitmap != null) {
+                            // Determine target format for this specific file
+                            val targetFormat = if (formatSelectionEnabled) {
+                                globalTargetFormat
+                            } else {
+                                getFormatFromUri(context, uri)
+                            }
+
                             // Target size scaling logic
                             if (useScaling) {
                                 bitmap = scaleToTargetSize(bitmap, targetFormat, quality, targetSizeLimit)
@@ -165,6 +178,11 @@ class FormatConversionViewModel : ViewModel() {
             _uiState.update { it.copy(isSaving = false) }
             onComplete(successCount)
         }
+    }
+
+    private fun getFormatFromUri(context: Context, uri: Uri): ImageFormat {
+        val mimeType = context.contentResolver.getType(uri) ?: return ImageFormat.PNG
+        return ImageFormat.values().find { it.mimeType == mimeType } ?: ImageFormat.PNG
     }
 
     private suspend fun scaleToTargetSize(

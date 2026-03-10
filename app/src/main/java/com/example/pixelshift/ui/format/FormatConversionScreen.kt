@@ -50,6 +50,9 @@ fun FormatConversionScreen(
     LaunchedEffect(mode) {
         if (mode == "scaling") {
             viewModel.setUseTargetSizeScaling(true)
+            viewModel.setFormatSelectionEnabled(false)
+        } else {
+            viewModel.setFormatSelectionEnabled(true)
         }
     }
 
@@ -69,17 +72,10 @@ fun FormatConversionScreen(
         }
     }
 
-    // Auto-launch removed
-    // LaunchedEffect(Unit) {
-    //    if (uiState.uris.isEmpty()) {
-    //        launcher.launch("image/*")
-    //    }
-    // }
-
     AdaptiveLayoutScreen(
             title = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("格式转换")
+                    Text(if (mode == "scaling") "尺寸缩放" else "格式转换")
                     if (uiState.uris.isNotEmpty()) {
                         Text(
                                 text = "${uiState.uris.size} 张图片",
@@ -126,19 +122,93 @@ fun FormatConversionScreen(
                 }
             },
             controls = {
-                SectionTitleWithInfo(
-                        text = "目标格式",
-                        infoTitle = "关于图片格式",
-                        infoContent =
-                                "不同的图片格式适用于不同的场景。\n\n" +
-                                "- PNG: 无损压缩，适合保存像素画，边缘清晰。\n" +
-                                "- JPEG: 有损压缩，适合照片，体积小。\n" +
-                                "- WEBP: 谷歌开发的高效格式，支持有损和无损。\n" +
-                                "- BMP/TIFF: 传统无损格式，适合专业用途。\n" +
-                                "- QOI: Quite OK Image，极速编码，适合像素画。\n" +
-                                "- ICO: 图标格式。\n" +
-                                "- GIF: 传统网络动图格式（当前仅支持静态帧）。"
-                )
+                if (uiState.isFormatSelectionEnabled) {
+                    SectionTitleWithInfo(
+                            text = "目标格式",
+                            infoTitle = "关于图片格式",
+                            infoContent =
+                                    "不同的图片格式适用于不同的场景。\n\n" +
+                                    "- PNG: 无损压缩，适合保存像素画，边缘清晰。\n" +
+                                    "- JPEG: 有损压缩，适合照片，体积小。\n" +
+                                    "- WEBP: 谷歌开发的高效格式，支持有损和无损。\n" +
+                                    "- BMP/TIFF: 传统无损格式，适合专业用途。\n" +
+                                    "- QOI: Quite OK Image，极速编码，适合像素画。\n" +
+                                    "- ICO: 图标格式。\n" +
+                                    "- GIF: 传统网络动图格式（当前仅支持静态帧）。"
+                    )
+                    Card(
+                            colors =
+                                    CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                                    ),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            com.example.pixelshift.ui.components.SimpleFlowRow(
+                                    horizontalGap = 8.dp,
+                                    verticalGap = 8.dp,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                            ) {
+                                ImageFormat.values().forEach { format ->
+                                    FilterChip(
+                                            selected = uiState.targetFormat == format,
+                                            onClick = {
+                                                HapticFeedbackManager.performHapticFeedback(
+                                                        view,
+                                                        hapticEnabled
+                                                )
+                                                viewModel.setTargetFormat(format)
+                                            },
+                                            label = { Text(format.label) },
+                                            leadingIcon =
+                                                    if (uiState.targetFormat == format) {
+                                                        {
+                                                            Icon(
+                                                                    Icons.Default.Check,
+                                                                    contentDescription = null
+                                                            )
+                                                        }
+                                                    } else null
+                                    )
+                                }
+                            }
+
+                            val showQualitySlider = when(uiState.targetFormat) {
+                                ImageFormat.JPEG, ImageFormat.WEBP_LOSSY -> true
+                                else -> false
+                            }
+
+                            if (showQualitySlider) {
+                                Text(
+                                        "质量: ${uiState.quality}%",
+                                        style = MaterialTheme.typography.labelLarge
+                                )
+                                Slider(
+                                        value = uiState.quality.toFloat(),
+                                        onValueChange = { viewModel.setQuality(it.toInt()) },
+                                        valueRange = 1f..100f,
+                                        steps = 99,
+                                        onValueChangeFinished = {
+                                            HapticFeedbackManager.performHapticFeedback(
+                                                    view,
+                                                    hapticEnabled
+                                            )
+                                        }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (mode == "scaling") {
+                    SectionTitleWithInfo(
+                            text = "缩放设置",
+                            infoTitle = "按大小缩放",
+                            infoContent = "本功能将自动调整图片分辨率，使文件占用空间接近设定的目标值。保留原始图片格式。"
+                    )
+                }
+
                 Card(
                         colors =
                                 CardDefaults.cardColors(
@@ -148,95 +218,40 @@ fun FormatConversionScreen(
                         shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        com.example.pixelshift.ui.components.SimpleFlowRow(
-                                horizontalGap = 8.dp,
-                                verticalGap = 8.dp,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                        ) {
-                            ImageFormat.values().forEach { format ->
-                                FilterChip(
-                                        selected = uiState.targetFormat == format,
-                                        onClick = {
+                        if (mode != "scaling") {
+                            Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                            "按占用大小缩放",
+                                            style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                            "自动调整尺寸以使文件接近目标大小",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                        checked = uiState.useTargetSizeScaling,
+                                        onCheckedChange = {
                                             HapticFeedbackManager.performHapticFeedback(
                                                     view,
                                                     hapticEnabled
                                             )
-                                            viewModel.setTargetFormat(format)
-                                        },
-                                        label = { Text(format.label) },
-                                        leadingIcon =
-                                                if (uiState.targetFormat == format) {
-                                                    {
-                                                        Icon(
-                                                                Icons.Default.Check,
-                                                                contentDescription = null
-                                                        )
-                                                    }
-                                                } else null
+                                            viewModel.setUseTargetSizeScaling(it)
+                                        }
                                 )
                             }
-                        }
-
-                        val showQualitySlider = when(uiState.targetFormat) {
-                            ImageFormat.JPEG, ImageFormat.WEBP_LOSSY -> true
-                            else -> false
-                        }
-
-                        if (showQualitySlider) {
-                            Text(
-                                    "质量: ${uiState.quality}%",
-                                    style = MaterialTheme.typography.labelLarge
-                            )
-                            Slider(
-                                    value = uiState.quality.toFloat(),
-                                    onValueChange = { viewModel.setQuality(it.toInt()) },
-                                    valueRange = 1f..100f,
-                                    steps = 99,
-                                    onValueChangeFinished = {
-                                        HapticFeedbackManager.performHapticFeedback(
-                                                view,
-                                                hapticEnabled
-                                        )
-                                    }
-                            )
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-
-                        Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                        "按占用大小缩放",
-                                        style = MaterialTheme.typography.titleSmall
-                                )
-                                Text(
-                                        "自动调整尺寸以使文件接近目标大小",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                    checked = uiState.useTargetSizeScaling,
-                                    onCheckedChange = {
-                                        HapticFeedbackManager.performHapticFeedback(
-                                                view,
-                                                hapticEnabled
-                                        )
-                                        viewModel.setUseTargetSizeScaling(it)
-                                    }
-                            )
                         }
 
                         if (uiState.useTargetSizeScaling) {
-                            Spacer(Modifier.height(8.dp))
+                            if (mode != "scaling") {
+                                Spacer(Modifier.height(8.dp))
+                            }
                             Text(
                                     "目标大小: ${uiState.targetFileSizeKB} KB",
                                     style = MaterialTheme.typography.labelLarge
@@ -259,6 +274,8 @@ fun FormatConversionScreen(
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(top = 4.dp)
                             )
+                        } else if (mode == "scaling") {
+                            Text("缩放功能已启用但设置异常。")
                         }
                     }
                 }
@@ -302,7 +319,7 @@ fun FormatConversionScreen(
                             }
                         },
                         primaryButtonIcon = Icons.Default.Save,
-                        primaryButtonText = if (uiState.isSaving) "转换中..." else "转换 & 保存"
+                        primaryButtonText = if (uiState.isSaving) "处理中..." else if (mode == "scaling") "缩放 & 保存" else "转换 & 保存"
                 )
             },
             canShowScreenData = true,
@@ -317,7 +334,7 @@ fun FormatConversionScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
-                        Text("正在转换 ${uiState.conversionProgress}/${uiState.uris.size}")
+                        Text("正在处理 ${uiState.conversionProgress}/${uiState.uris.size}")
                     }
                 },
                 confirmButton = {}
