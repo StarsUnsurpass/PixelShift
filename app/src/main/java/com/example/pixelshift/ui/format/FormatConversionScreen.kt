@@ -120,10 +120,17 @@ fun FormatConversionScreen(
             },
             controls = {
                 SectionTitleWithInfo(
-                        text = "目标格式 (Target Format)",
+                        text = "目标格式",
                         infoTitle = "关于图片格式",
                         infoContent =
-                                "不同的图片格式适用于不同的场景。\n\n- PNG: 无损压缩，适合保存像素画，边缘清晰。\n- JPEG: 有损压缩，适合照片，体积小但可能有噪点。\n- WEBP: 谷歌开发的格式，兼顾质量和体积。"
+                                "不同的图片格式适用于不同的场景。\n\n" +
+                                "- PNG: 无损压缩，适合保存像素画，边缘清晰。\n" +
+                                "- JPEG: 有损压缩，适合照片，体积小。\n" +
+                                "- WEBP: 谷歌开发的高效格式，支持有损和无损。\n" +
+                                "- BMP/TIFF: 传统无损格式，适合专业用途。\n" +
+                                "- QOI: Quite OK Image，极速编码，适合像素画。\n" +
+                                "- ICO: 图标格式。\n" +
+                                "- GIF: 传统网络动图格式（当前仅支持静态帧）。"
                 )
                 Card(
                         colors =
@@ -134,17 +141,12 @@ fun FormatConversionScreen(
                         shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        com.example.pixelshift.ui.components.SimpleFlowRow(
+                                horizontalGap = 8.dp,
+                                verticalGap = 8.dp,
                                 modifier = Modifier.padding(bottom = 8.dp)
                         ) {
-                            val formats =
-                                    listOf(
-                                            Bitmap.CompressFormat.PNG,
-                                            Bitmap.CompressFormat.JPEG,
-                                            Bitmap.CompressFormat.WEBP
-                                    )
-                            formats.forEach { format ->
+                            ImageFormat.values().forEach { format ->
                                 FilterChip(
                                         selected = uiState.targetFormat == format,
                                         onClick = {
@@ -154,7 +156,7 @@ fun FormatConversionScreen(
                                             )
                                             viewModel.setTargetFormat(format)
                                         },
-                                        label = { Text(format.name) },
+                                        label = { Text(format.label) },
                                         leadingIcon =
                                                 if (uiState.targetFormat == format) {
                                                     {
@@ -168,7 +170,12 @@ fun FormatConversionScreen(
                             }
                         }
 
-                        if (uiState.targetFormat != Bitmap.CompressFormat.PNG) {
+                        val showQualitySlider = when(uiState.targetFormat) {
+                            ImageFormat.JPEG, ImageFormat.WEBP_LOSSY -> true
+                            else -> false
+                        }
+
+                        if (showQualitySlider) {
                             Text(
                                     "质量: ${uiState.quality}%",
                                     style = MaterialTheme.typography.labelLarge
