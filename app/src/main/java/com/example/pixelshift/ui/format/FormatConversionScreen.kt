@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -200,13 +202,11 @@ fun FormatConversionScreen(
                     }
                 }
 
-                if (mode == "scaling") {
-                    SectionTitleWithInfo(
-                            text = "缩放设置",
-                            infoTitle = "按大小缩放",
-                            infoContent = "通过调整缩放百分比来改变图片尺寸，实时估算文件占用空间。保留原始图片格式。"
-                    )
-                }
+                SectionTitleWithInfo(
+                        text = "缩放设置",
+                        infoTitle = "缩放说明",
+                        infoContent = "支持按百分比比例缩放或直接指定宽高。开启“保持宽高比”可防止图片拉伸变形。缩放结果将实时估算文件体积。"
+                )
 
                 Card(
                         colors =
@@ -225,11 +225,11 @@ fun FormatConversionScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                            "按比例缩放",
+                                            "启用缩放",
                                             style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                            "手动调整图片尺寸百分比",
+                                            "调整图片尺寸",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -252,49 +252,115 @@ fun FormatConversionScreen(
                                 Spacer(Modifier.height(8.dp))
                             }
                             
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Bottom
+                            TabRow(
+                                selectedTabIndex = uiState.scalingMode.ordinal,
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).height(40.dp),
+                                indicator = @Composable {}
                             ) {
-                                Text(
-                                    "缩放比例: ${uiState.scalePercentage}%",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                                if (uiState.estimatedFileSize > 0) {
-                                    val sizeText = if (uiState.estimatedFileSize > 1024 * 1024) {
-                                        String.format("%.2f MB", uiState.estimatedFileSize / (1024f * 1024f))
-                                    } else {
-                                        String.format("%.1f KB", uiState.estimatedFileSize / 1024f)
-                                    }
-                                    Text(
-                                        "估算大小: $sizeText",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                ScalingMode.values().forEach { modeOption ->
+                                    val selected = uiState.scalingMode == modeOption
+                                    Tab(
+                                        selected = selected,
+                                        onClick = {
+                                            HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                            viewModel.setScalingMode(modeOption, context)
+                                        },
+                                        text = {
+                                            Text(
+                                                text = if (modeOption == ScalingMode.PERCENTAGE) "按比例" else "按尺寸",
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        },
+                                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                             
-                            Slider(
-                                    value = uiState.scalePercentage.toFloat(),
-                                    onValueChange = { viewModel.setScalePercentage(it.toInt(), context) },
-                                    valueRange = 1f..100f,
-                                    steps = 99,
-                                    onValueChangeFinished = {
-                                        HapticFeedbackManager.performHapticFeedback(
-                                                view,
-                                                hapticEnabled
+                            Spacer(Modifier.height(16.dp))
+
+                            if (uiState.scalingMode == ScalingMode.PERCENTAGE) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    Text(
+                                        "缩放比例: ${uiState.scalePercentage}%",
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                    EstimationSizeText(uiState.estimatedFileSize)
+                                }
+                                Slider(
+                                        value = uiState.scalePercentage.toFloat(),
+                                        onValueChange = { viewModel.setScalePercentage(it.toInt(), context) },
+                                        valueRange = 1f..100f,
+                                        steps = 99,
+                                        onValueChangeFinished = {
+                                            HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
+                                        }
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = if (uiState.targetWidth == 0) "" else uiState.targetWidth.toString(),
+                                        onValueChange = { 
+                                            val value = it.toIntOrNull() ?: 0
+                                            viewModel.setTargetDimensions(value, uiState.targetHeight, context)
+                                        },
+                                        label = { Text("宽度") },
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true
+                                    )
+                                    Text("×", style = MaterialTheme.typography.titleLarge)
+                                    OutlinedTextField(
+                                        value = if (uiState.targetHeight == 0) "" else uiState.targetHeight.toString(),
+                                        onValueChange = { 
+                                            val value = it.toIntOrNull() ?: 0
+                                            viewModel.setTargetDimensions(uiState.targetWidth, value, context)
+                                        },
+                                        label = { Text("高度") },
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true
+                                    )
+                                }
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = uiState.maintainAspectRatio,
+                                            onCheckedChange = { viewModel.setMaintainAspectRatio(it) }
                                         )
+                                        Text("保持宽高比", style = MaterialTheme.typography.labelMedium)
                                     }
-                            )
+                                    EstimationSizeText(uiState.estimatedFileSize)
+                                }
+                            }
                             
                             if (uiState.previewBitmap != null) {
-                                val newW = (uiState.previewBitmap!!.width * (uiState.scalePercentage / 100f)).toInt()
-                                val newH = (uiState.previewBitmap!!.height * (uiState.scalePercentage / 100f)).toInt()
+                                val finalW = if (uiState.scalingMode == ScalingMode.PERCENTAGE) 
+                                    (uiState.previewBitmap!!.width * (uiState.scalePercentage / 100f)).toInt()
+                                    else uiState.targetWidth
+                                val finalH = if (uiState.scalingMode == ScalingMode.PERCENTAGE) 
+                                    (uiState.previewBitmap!!.height * (uiState.scalePercentage / 100f)).toInt()
+                                    else uiState.targetHeight
+                                    
                                 Text(
-                                    "目标尺寸: $newW x $newH 像素",
+                                    "最终尺寸: $finalW x $finalH 像素",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
                         } else if (mode == "scaling") {
@@ -360,6 +426,22 @@ fun FormatConversionScreen(
                     }
                 },
                 confirmButton = {}
+        )
+    }
+}
+
+@Composable
+fun EstimationSizeText(size: Long) {
+    if (size > 0) {
+        val sizeText = if (size > 1024 * 1024) {
+            String.format("%.2f MB", size / (1024f * 1024f))
+        } else {
+            String.format("%.1f KB", size / 1024f)
+        }
+        Text(
+            "估算大小: $sizeText",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }

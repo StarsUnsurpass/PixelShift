@@ -18,6 +18,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class ScalingMode {
+    PERCENTAGE,
+    DIMENSIONS
+}
+
 data class FormatConversionUiState(
         val uris: List<Uri> = emptyList(),
         val selectedUri: Uri? = null,
@@ -27,7 +32,11 @@ data class FormatConversionUiState(
         val targetFormat: ImageFormat = ImageFormat.PNG,
         val quality: Int = 100,
         val useTargetSizeScaling: Boolean = false,
+        val scalingMode: ScalingMode = ScalingMode.PERCENTAGE,
         val scalePercentage: Int = 100,
+        val targetWidth: Int = 0,
+        val targetHeight: Int = 0,
+        val maintainAspectRatio: Boolean = true,
         val estimatedFileSize: Long = 0,
         val isFormatSelectionEnabled: Boolean = true,
         val conversionProgress: Int = 0
@@ -77,17 +86,42 @@ class FormatConversionViewModel : ViewModel() {
         updateEstimation(context)
     }
 
+    fun setScalingMode(mode: ScalingMode, context: Context) {
+        _uiState.update { it.copy(scalingMode = mode) }
+        updateEstimation(context)
+    }
+
     fun setScalePercentage(percentage: Int, context: Context) {
         _uiState.update { it.copy(scalePercentage = percentage) }
         updateEstimation(context)
     }
 
-    fun setFormatSelectionEnabled(enabled: Boolean) {
-        _uiState.update { it.copy(isFormatSelectionEnabled = enabled) }
+    fun setTargetDimensions(width: Int, height: Int, context: Context) {
+        val current = _uiState.value
+        val bitmap = current.previewBitmap
+        
+        var finalWidth = width
+        var finalHeight = height
+        
+        if (current.maintainAspectRatio && bitmap != null && (width != current.targetWidth || height != current.targetHeight)) {
+            val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            if (width != current.targetWidth) {
+                finalHeight = (width / ratio).toInt().coerceAtLeast(1)
+            } else if (height != current.targetHeight) {
+                finalWidth = (height * ratio).toInt().coerceAtLeast(1)
+            }
+        }
+        
+        _uiState.update { it.copy(targetWidth = finalWidth, targetHeight = finalHeight) }
+        updateEstimation(context)
     }
 
-    private fun loadPreview() {
-        // Obsolete
+    fun setMaintainAspectRatio(maintain: Boolean) {
+        _uiState.update { it.copy(maintainAspectRatio = maintain) }
+    }
+
+    fun setFormatSelectionEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(isFormatSelectionEnabled = enabled) }
     }
 
     fun loadPreview(context: Context) {
@@ -104,19 +138,22 @@ class FormatConversionViewModel : ViewModel() {
                             null
                         }
                     }
-            _uiState.update { it.copy(previewBitmap = bitmap, isLoading = false) }
+            _uiState.update { 
+                it.copy(
+                    previewBitmap = bitmap, 
+                    isLoading = false,
+                    targetWidth = bitmap?.width ?: 0,
+                    targetHeight = bitmap?.height ?: 0
+                ) 
+            }
             updateEstimation(context)
         }
     }
 
     private fun updateEstimation(context: Context) {
         val uri = uiState.value.selectedUri ?: return
-        val percentage = uiState.value.scalePercentage
-        val formatSelectionEnabled = uiState.value.isFormatSelectionEnabled
-        val globalTargetFormat = uiState.value.targetFormat
-        val quality = uiState.value.quality
-        val useScaling = uiState.value.useTargetSizeScaling
-
+        val state = uiState.value
+        
         estimationJob?.cancel()
         estimationJob = viewModelScope.launch {
             val estimatedSize = withContext(Dispatchers.IO) {
@@ -124,22 +161,33 @@ class FormatConversionViewModel : ViewModel() {
                     val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
                     val original = BitmapFactory.decodeStream(inputStream) ?: return@withContext 0L
                     
-                    val targetFormat = if (formatSelectionEnabled) {
-                        globalTargetFormat
+                    val targetFormat = if (state.isFormatSelectionEnabled) {
+                        state.targetFormat
                     } else {
                         getFormatFromUri(context, uri)
                     }
 
-                    val bitmapToEncode = if (useScaling && percentage < 100) {
-                        val newWidth = (original.width * (percentage / 100f)).toInt().coerceAtLeast(1)
-                        val newHeight = (original.height * (percentage / 100f)).toInt().coerceAtLeast(1)
-                        Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                    val bitmapToEncode = if (state.useTargetSizeScaling) {
+                        when (state.scalingMode) {
+                            ScalingMode.PERCENTAGE -> {
+                                if (state.scalePercentage < 100) {
+                                    val newWidth = (original.width * (state.scalePercentage / 100f)).toInt().coerceAtLeast(1)
+                                    val newHeight = (original.height * (state.scalePercentage / 100f)).toInt().coerceAtLeast(1)
+                                    Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                                } else original
+                            }
+                            ScalingMode.DIMENSIONS -> {
+                                if (state.targetWidth > 0 && state.targetHeight > 0) {
+                                    Bitmap.createScaledBitmap(original, state.targetWidth, state.targetHeight, true)
+                                } else original
+                            }
+                        }
                     } else {
                         original
                     }
 
                     val bos = java.io.ByteArrayOutputStream()
-                    encodeBitmap(bitmapToEncode, targetFormat, quality, bos)
+                    encodeBitmap(bitmapToEncode, targetFormat, state.quality, bos)
                     bos.size().toLong()
                 } catch (e: Exception) {
                     0L
@@ -153,12 +201,8 @@ class FormatConversionViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, conversionProgress = 0) }
             var successCount = 0
-            val uris = uiState.value.uris
-            val globalTargetFormat = uiState.value.targetFormat
-            val quality = uiState.value.quality
-            val useScaling = uiState.value.useTargetSizeScaling
-            val percentage = uiState.value.scalePercentage
-            val formatSelectionEnabled = uiState.value.isFormatSelectionEnabled
+            val state = uiState.value
+            val uris = state.uris
 
             withContext(Dispatchers.IO) {
                 uris.forEachIndexed { index, uri ->
@@ -167,16 +211,27 @@ class FormatConversionViewModel : ViewModel() {
                         val original = BitmapFactory.decodeStream(inputStream)
 
                         if (original != null) {
-                            val targetFormat = if (formatSelectionEnabled) {
-                                globalTargetFormat
+                            val targetFormat = if (state.isFormatSelectionEnabled) {
+                                state.targetFormat
                             } else {
                                 getFormatFromUri(context, uri)
                             }
 
-                            var bitmap = if (useScaling && percentage < 100) {
-                                val newWidth = (original.width * (percentage / 100f)).toInt().coerceAtLeast(1)
-                                val newHeight = (original.height * (percentage / 100f)).toInt().coerceAtLeast(1)
-                                Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                            val bitmap = if (state.useTargetSizeScaling) {
+                                when (state.scalingMode) {
+                                    ScalingMode.PERCENTAGE -> {
+                                        val newWidth = (original.width * (state.scalePercentage / 100f)).toInt().coerceAtLeast(1)
+                                        val newHeight = (original.height * (state.scalePercentage / 100f)).toInt().coerceAtLeast(1)
+                                        Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                                    }
+                                    ScalingMode.DIMENSIONS -> {
+                                        if (state.targetWidth > 0 && state.targetHeight > 0) {
+                                            // Handle relative scaling for batch if maintain aspect ratio is true?
+                                            // For now, use absolute values as specified
+                                            Bitmap.createScaledBitmap(original, state.targetWidth, state.targetHeight, true)
+                                        } else original
+                                    }
+                                }
                             } else {
                                 original
                             }
@@ -186,35 +241,18 @@ class FormatConversionViewModel : ViewModel() {
 
                             val contentValues =
                                     android.content.ContentValues().apply {
-                                        put(
-                                                android.provider.MediaStore.Images.Media
-                                                        .DISPLAY_NAME,
-                                                filename
-                                        )
-                                        put(
-                                                android.provider.MediaStore.Images.Media.MIME_TYPE,
-                                                targetFormat.mimeType
-                                        )
-                                        put(
-                                                android.provider.MediaStore.Images.Media
-                                                        .RELATIVE_PATH,
-                                                "Pictures/PixelShift/Converted"
-                                        )
+                                        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename)
+                                        put(android.provider.MediaStore.Images.Media.MIME_TYPE, targetFormat.mimeType)
+                                        put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PixelShift/Converted")
                                     }
 
                             val resolver = context.contentResolver
-                            val imageUri =
-                                    resolver.insert(
-                                            android.provider.MediaStore.Images.Media
-                                                    .EXTERNAL_CONTENT_URI,
-                                            contentValues
-                                    )
+                            val imageUri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
                             if (imageUri != null) {
-                                val outputStream: OutputStream? =
-                                        resolver.openOutputStream(imageUri)
+                                val outputStream: OutputStream? = resolver.openOutputStream(imageUri)
                                 if (outputStream != null) {
-                                    val success = encodeBitmap(bitmap, targetFormat, quality, outputStream)
+                                    val success = encodeBitmap(bitmap, targetFormat, state.quality, outputStream)
                                     outputStream.close()
                                     if (success) successCount++
                                 }
@@ -286,13 +324,10 @@ class FormatConversionViewModel : ViewModel() {
         val fileSize = 54 + imageSize
 
         val header = ByteArray(54)
-        // File Header
         header[0] = 'B'.code.toByte()
         header[1] = 'M'.code.toByte()
         writeInt(header, 2, fileSize)
         writeInt(header, 10, 54)
-
-        // DIB Header
         writeInt(header, 14, 40)
         writeInt(header, 18, width)
         writeInt(header, 22, height)
@@ -315,18 +350,16 @@ class FormatConversionViewModel : ViewModel() {
     }
 
     private fun encodeQOI(bitmap: Bitmap, outputStream: OutputStream) {
-        // Simple QOI implementation
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        // Header
         outputStream.write("qoif".toByteArray())
         outputStream.write(ByteBuffer.allocate(4).putInt(width).array())
         outputStream.write(ByteBuffer.allocate(4).putInt(height).array())
-        outputStream.write(4) // channels RGBA
-        outputStream.write(0) // colorspace sRGB
+        outputStream.write(4)
+        outputStream.write(0)
 
         val index = IntArray(64)
         var prevR = 0; var prevG = 0; var prevB = 0; var prevA = 255
@@ -384,46 +417,41 @@ class FormatConversionViewModel : ViewModel() {
     }
 
     private fun encodeICO(bitmap: Bitmap, outputStream: OutputStream) {
-        // Simplified ICO (single 32x32 or scaled bitmap as BMP)
         val width = bitmap.width.coerceAtMost(256)
         val height = bitmap.height.coerceAtMost(256)
         val scaled = if (width != bitmap.width || height != bitmap.height) {
             Bitmap.createScaledBitmap(bitmap, width, height, true)
         } else bitmap
 
-        // ICO Header
         val header = ByteArray(6)
-        header[2] = 1.toByte() // Type 1 = ICO
-        header[4] = 1.toByte() // Count 1
+        header[2] = 1.toByte()
+        header[4] = 1.toByte()
         outputStream.write(header)
 
-        // Directory Entry
         val entry = ByteArray(16)
         entry[0] = (if (width >= 256) 0 else width).toByte()
         entry[1] = (if (height >= 256) 0 else height).toByte()
-        entry[3] = 0.toByte() // Reserved
-        entry[4] = 1.toByte() // Color planes
-        entry[6] = 32.toByte() // Bits per pixel
+        entry[3] = 0.toByte()
+        entry[4] = 1.toByte()
+        entry[6] = 32.toByte()
         
-        // We will use PNG compression for the image data inside ICO (supported since Vista)
         val bos = java.io.ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.PNG, 100, bos)
         val pngData = bos.toByteArray()
         
         writeInt(entry, 8, pngData.size)
-        writeInt(entry, 12, 22) // Offset
+        writeInt(entry, 12, 22)
         outputStream.write(entry)
         outputStream.write(pngData)
     }
 
     private fun encodeTIFF(bitmap: Bitmap, outputStream: OutputStream) {
-        // Very basic TIFF (Uncompressed)
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        outputStream.write(byteArrayOf('I'.code.toByte(), 'I'.code.toByte(), 42, 0)) // Little Endian
+        outputStream.write(byteArrayOf('I'.code.toByte(), 'I'.code.toByte(), 42, 0))
         val ifdOffset = 8 + width * height * 3
         writeInt(outputStream, ifdOffset)
 
@@ -433,31 +461,25 @@ class FormatConversionViewModel : ViewModel() {
             outputStream.write(p and 0xFF)
         }
 
-        // IFD
         val entries = 10
         writeShort(outputStream, entries)
-        writeIFDEntry(outputStream, 256, 3, 1, width) // ImageWidth
-        writeIFDEntry(outputStream, 257, 3, 1, height) // ImageLength
-        writeIFDEntry(outputStream, 258, 3, 3, ifdOffset + 2 + entries * 12 + 4) // BitsPerSample
-        writeIFDEntry(outputStream, 259, 3, 1, 1) // Compression (1 = none)
-        writeIFDEntry(outputStream, 262, 3, 1, 2) // PhotometricInterpretation (2 = RGB)
-        writeIFDEntry(outputStream, 273, 4, 1, 8) // StripOffsets
-        writeIFDEntry(outputStream, 277, 3, 1, 3) // SamplesPerPixel
-        writeIFDEntry(outputStream, 278, 3, 1, height) // RowsPerStrip
-        writeIFDEntry(outputStream, 279, 4, 1, width * height * 3) // StripByteCounts
-        writeIFDEntry(outputStream, 282, 5, 1, ifdOffset + 2 + entries * 12 + 10) // XResolution
+        writeIFDEntry(outputStream, 256, 3, 1, width)
+        writeIFDEntry(outputStream, 257, 3, 1, height)
+        writeIFDEntry(outputStream, 258, 3, 3, ifdOffset + 2 + entries * 12 + 4)
+        writeIFDEntry(outputStream, 259, 3, 1, 1)
+        writeIFDEntry(outputStream, 262, 3, 1, 2)
+        writeIFDEntry(outputStream, 273, 4, 1, 8)
+        writeIFDEntry(outputStream, 277, 3, 1, 3)
+        writeIFDEntry(outputStream, 278, 3, 1, height)
+        writeIFDEntry(outputStream, 279, 4, 1, width * height * 3)
+        writeIFDEntry(outputStream, 282, 5, 1, ifdOffset + 2 + entries * 12 + 10)
 
-        writeInt(outputStream, 0) // Next IFD offset
-        
-        // Data for BitsPerSample (3 shorts)
+        writeInt(outputStream, 0)
         writeShort(outputStream, 8); writeShort(outputStream, 8); writeShort(outputStream, 8)
-        // Data for XResolution (1 rational: 72/1)
         writeInt(outputStream, 72); writeInt(outputStream, 1)
     }
 
     private fun encodeGIF(bitmap: Bitmap, outputStream: OutputStream) {
-        // Just save as PNG/JPEG with GIF extension as a placeholder if we don't have a real GIF encoder
-        // Actually, we can use a very simple static GIF encoder or just fallback
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
     }
 
