@@ -71,7 +71,7 @@ fun DashboardScreen(navController: NavController, themeViewModel: ThemeViewModel
                         )
                         PreferenceItem(
                                 title = "格式转换",
-                                subtitle = "批量转换图片格式 (PNG, JPEG, WEBP)",
+                                subtitle = "批量转换图片格式",
                                 icon = androidx.compose.material.icons.Icons.Default.Sync,
                                 onClick = {
                                         HapticFeedbackManager.performHapticFeedback(

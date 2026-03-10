@@ -201,8 +201,8 @@ class FormatConversionViewModel : ViewModel() {
 
         val header = ByteArray(54)
         // File Header
-        header[0] = 'B'.toByte()
-        header[1] = 'M'.toByte()
+        header[0] = 'B'.code.toByte()
+        header[1] = 'M'.code.toByte()
         writeInt(header, 2, fileSize)
         writeInt(header, 10, 54)
 
@@ -337,7 +337,7 @@ class FormatConversionViewModel : ViewModel() {
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        outputStream.write(byteArrayOf('I'.toByte(), 'I'.toByte(), 42, 0)) // Little Endian
+        outputStream.write(byteArrayOf('I'.code.toByte(), 'I'.code.toByte(), 42, 0)) // Little Endian
         val ifdOffset = 8 + width * height * 3
         writeInt(outputStream, ifdOffset)
 
