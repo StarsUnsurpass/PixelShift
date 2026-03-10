@@ -25,6 +25,8 @@ data class FormatConversionUiState(
         val isSaving: Boolean = false,
         val targetFormat: ImageFormat = ImageFormat.PNG,
         val quality: Int = 100,
+        val useTargetSizeScaling: Boolean = false,
+        val targetFileSizeKB: Int = 500,
         val conversionProgress: Int = 0
 )
 
@@ -63,6 +65,14 @@ class FormatConversionViewModel : ViewModel() {
         _uiState.update { it.copy(quality = quality) }
     }
 
+    fun setUseTargetSizeScaling(use: Boolean) {
+        _uiState.update { it.copy(useTargetSizeScaling = use) }
+    }
+
+    fun setTargetFileSizeKB(kb: Int) {
+        _uiState.update { it.copy(targetFileSizeKB = kb) }
+    }
+
     private fun loadPreview() {
         // This is handled by loadPreview(context) which is called from UI
     }
@@ -92,14 +102,21 @@ class FormatConversionViewModel : ViewModel() {
             val uris = uiState.value.uris
             val targetFormat = uiState.value.targetFormat
             val quality = uiState.value.quality
+            val useScaling = uiState.value.useTargetSizeScaling
+            val targetSizeLimit = uiState.value.targetFileSizeKB * 1024L
 
             withContext(Dispatchers.IO) {
                 uris.forEachIndexed { index, uri ->
                     try {
                         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-                        val bitmap = BitmapFactory.decodeStream(inputStream)
+                        var bitmap = BitmapFactory.decodeStream(inputStream)
 
                         if (bitmap != null) {
+                            // Target size scaling logic
+                            if (useScaling) {
+                                bitmap = scaleToTargetSize(bitmap, targetFormat, quality, targetSizeLimit)
+                            }
+
                             val filename =
                                     "pixelshift_${System.currentTimeMillis()}_$index.${targetFormat.extension}"
 
@@ -148,6 +165,46 @@ class FormatConversionViewModel : ViewModel() {
             _uiState.update { it.copy(isSaving = false) }
             onComplete(successCount)
         }
+    }
+
+    private suspend fun scaleToTargetSize(
+            original: Bitmap,
+            format: ImageFormat,
+            quality: Int,
+            targetSizeLimit: Long
+    ): Bitmap = withContext(Dispatchers.Default) {
+        var currentBitmap = original
+        var scale = 1.0
+        
+        // Initial test
+        val bos = java.io.ByteArrayOutputStream()
+        encodeBitmap(currentBitmap, format, quality, bos)
+        var currentSize = bos.size().toLong()
+        
+        // Maximum iterations to prevent infinite loop
+        var iterations = 0
+        val maxIterations = 5
+        
+        while (currentSize > targetSizeLimit && iterations < maxIterations) {
+            iterations++
+            // Heuristic scaling: size is roughly proportional to area (width * height)
+            // So factor = sqrt(target_size / current_size)
+            val factor = Math.sqrt(targetSizeLimit.toDouble() / currentSize.toDouble()) * 0.95
+            scale *= factor
+            
+            val newWidth = (original.width * scale).toInt().coerceAtLeast(1)
+            val newHeight = (original.height * scale).toInt().coerceAtLeast(1)
+            
+            if (newWidth == currentBitmap.width && newHeight == currentBitmap.height) break
+            
+            currentBitmap = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+            
+            bos.reset()
+            encodeBitmap(currentBitmap, format, quality, bos)
+            currentSize = bos.size().toLong()
+        }
+        
+        currentBitmap
     }
 
     private fun encodeBitmap(

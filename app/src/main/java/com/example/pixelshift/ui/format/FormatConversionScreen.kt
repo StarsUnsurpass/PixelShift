@@ -193,6 +193,66 @@ fun FormatConversionScreen(
                                     }
                             )
                         }
+
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                        "按占用大小缩放",
+                                        style = MaterialTheme.typography.titleSmall
+                                )
+                                Text(
+                                        "自动调整尺寸以使文件接近目标大小",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                    checked = uiState.useTargetSizeScaling,
+                                    onCheckedChange = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                        viewModel.setUseTargetSizeScaling(it)
+                                    }
+                            )
+                        }
+
+                        if (uiState.useTargetSizeScaling) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                    "目标大小: ${uiState.targetFileSizeKB} KB",
+                                    style = MaterialTheme.typography.labelLarge
+                            )
+                            Slider(
+                                    value = uiState.targetFileSizeKB.toFloat(),
+                                    onValueChange = { viewModel.setTargetFileSizeKB(it.toInt()) },
+                                    valueRange = 50f..5000f,
+                                    steps = 99,
+                                    onValueChangeFinished = {
+                                        HapticFeedbackManager.performHapticFeedback(
+                                                view,
+                                                hapticEnabled
+                                        )
+                                    }
+                            )
+                            Text(
+                                    "提示：对于 PNG 等无损格式，主要通过降低分辨率实现",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                 }
 
