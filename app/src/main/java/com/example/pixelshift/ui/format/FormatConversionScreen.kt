@@ -49,7 +49,7 @@ fun FormatConversionScreen(
 
     LaunchedEffect(mode) {
         if (mode == "scaling") {
-            viewModel.setUseTargetSizeScaling(true)
+            viewModel.setUseTargetSizeScaling(true, context)
             viewModel.setFormatSelectionEnabled(false)
         } else {
             viewModel.setFormatSelectionEnabled(true)
@@ -61,8 +61,7 @@ fun FormatConversionScreen(
                     contract = ActivityResultContracts.GetMultipleContents()
             ) { uris ->
                 if (uris.isNotEmpty()) {
-                    viewModel.updateUris(uris)
-                    viewModel.loadPreview(context)
+                    viewModel.updateUris(uris, context)
                 }
             }
 
@@ -158,7 +157,7 @@ fun FormatConversionScreen(
                                                         view,
                                                         hapticEnabled
                                                 )
-                                                viewModel.setTargetFormat(format)
+                                                viewModel.setTargetFormat(format, context)
                                             },
                                             label = { Text(format.label) },
                                             leadingIcon =
@@ -186,7 +185,7 @@ fun FormatConversionScreen(
                                 )
                                 Slider(
                                         value = uiState.quality.toFloat(),
-                                        onValueChange = { viewModel.setQuality(it.toInt()) },
+                                        onValueChange = { viewModel.setQuality(it.toInt(), context) },
                                         valueRange = 1f..100f,
                                         steps = 99,
                                         onValueChangeFinished = {
@@ -205,7 +204,7 @@ fun FormatConversionScreen(
                     SectionTitleWithInfo(
                             text = "缩放设置",
                             infoTitle = "按大小缩放",
-                            infoContent = "本功能将自动调整图片分辨率，使文件占用空间接近设定的目标值。保留原始图片格式。"
+                            infoContent = "通过调整缩放百分比来改变图片尺寸，实时估算文件占用空间。保留原始图片格式。"
                     )
                 }
 
@@ -226,11 +225,11 @@ fun FormatConversionScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                            "按占用大小缩放",
+                                            "按比例缩放",
                                             style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                            "自动调整尺寸以使文件接近目标大小",
+                                            "手动调整图片尺寸百分比",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -242,7 +241,7 @@ fun FormatConversionScreen(
                                                     view,
                                                     hapticEnabled
                                             )
-                                            viewModel.setUseTargetSizeScaling(it)
+                                            viewModel.setUseTargetSizeScaling(it, context)
                                         }
                                 )
                             }
@@ -252,14 +251,34 @@ fun FormatConversionScreen(
                             if (mode != "scaling") {
                                 Spacer(Modifier.height(8.dp))
                             }
-                            Text(
-                                    "目标大小: ${uiState.targetFileSizeKB} KB",
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Text(
+                                    "缩放比例: ${uiState.scalePercentage}%",
                                     style = MaterialTheme.typography.labelLarge
-                            )
+                                )
+                                if (uiState.estimatedFileSize > 0) {
+                                    val sizeText = if (uiState.estimatedFileSize > 1024 * 1024) {
+                                        String.format("%.2f MB", uiState.estimatedFileSize / (1024f * 1024f))
+                                    } else {
+                                        String.format("%.1f KB", uiState.estimatedFileSize / 1024f)
+                                    }
+                                    Text(
+                                        "估算大小: $sizeText",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            
                             Slider(
-                                    value = uiState.targetFileSizeKB.toFloat(),
-                                    onValueChange = { viewModel.setTargetFileSizeKB(it.toInt()) },
-                                    valueRange = 50f..5000f,
+                                    value = uiState.scalePercentage.toFloat(),
+                                    onValueChange = { viewModel.setScalePercentage(it.toInt(), context) },
+                                    valueRange = 1f..100f,
                                     steps = 99,
                                     onValueChangeFinished = {
                                         HapticFeedbackManager.performHapticFeedback(
@@ -268,14 +287,18 @@ fun FormatConversionScreen(
                                         )
                                     }
                             )
-                            Text(
-                                    "提示：对于 PNG 等无损格式，主要通过降低分辨率实现",
+                            
+                            if (uiState.previewBitmap != null) {
+                                val newW = (uiState.previewBitmap!!.width * (uiState.scalePercentage / 100f)).toInt()
+                                val newH = (uiState.previewBitmap!!.height * (uiState.scalePercentage / 100f)).toInt()
+                                Text(
+                                    "目标尺寸: $newW x $newH 像素",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp)
-                            )
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         } else if (mode == "scaling") {
-                            Text("缩放功能已启用但设置异常。")
+                            Text("缩放功能已禁用。")
                         }
                     }
                 }
@@ -291,8 +314,7 @@ fun FormatConversionScreen(
                             FilterChip(
                                     selected = uri == uiState.selectedUri,
                                     onClick = {
-                                        viewModel.selectUri(uri)
-                                        viewModel.loadPreview(context)
+                                        viewModel.selectUri(uri, context)
                                     },
                                     label = {
                                         Text(
@@ -314,7 +336,7 @@ fun FormatConversionScreen(
                         onPrimaryButtonClick = {
                             HapticFeedbackManager.performHapticFeedback(view, hapticEnabled)
                             viewModel.convertAndSaveAll(context) { count ->
-                                Toast.makeText(context, "成功转换 $count 张图片", Toast.LENGTH_SHORT)
+                                Toast.makeText(context, "成功处理 $count 张图片", Toast.LENGTH_SHORT)
                                         .show()
                             }
                         },

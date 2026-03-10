@@ -10,6 +10,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +27,8 @@ data class FormatConversionUiState(
         val targetFormat: ImageFormat = ImageFormat.PNG,
         val quality: Int = 100,
         val useTargetSizeScaling: Boolean = false,
-        val targetFileSizeKB: Int = 500,
+        val scalePercentage: Int = 100,
+        val estimatedFileSize: Long = 0,
         val isFormatSelectionEnabled: Boolean = true,
         val conversionProgress: Int = 0
 )
@@ -47,31 +49,37 @@ class FormatConversionViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(FormatConversionUiState())
     val uiState: StateFlow<FormatConversionUiState> = _uiState.asStateFlow()
+    
+    private var estimationJob: Job? = null
 
-    fun updateUris(uris: List<Uri>) {
+    fun updateUris(uris: List<Uri>, context: Context) {
         _uiState.update { it.copy(uris = uris, selectedUri = uris.firstOrNull()) }
-        loadPreview()
+        loadPreview(context)
     }
 
-    fun selectUri(uri: Uri) {
+    fun selectUri(uri: Uri, context: Context) {
         _uiState.update { it.copy(selectedUri = uri) }
-        loadPreview()
+        loadPreview(context)
     }
 
-    fun setTargetFormat(format: ImageFormat) {
+    fun setTargetFormat(format: ImageFormat, context: Context) {
         _uiState.update { it.copy(targetFormat = format) }
+        updateEstimation(context)
     }
 
-    fun setQuality(quality: Int) {
+    fun setQuality(quality: Int, context: Context) {
         _uiState.update { it.copy(quality = quality) }
+        updateEstimation(context)
     }
 
-    fun setUseTargetSizeScaling(use: Boolean) {
+    fun setUseTargetSizeScaling(use: Boolean, context: Context) {
         _uiState.update { it.copy(useTargetSizeScaling = use) }
+        updateEstimation(context)
     }
 
-    fun setTargetFileSizeKB(kb: Int) {
-        _uiState.update { it.copy(targetFileSizeKB = kb) }
+    fun setScalePercentage(percentage: Int, context: Context) {
+        _uiState.update { it.copy(scalePercentage = percentage) }
+        updateEstimation(context)
     }
 
     fun setFormatSelectionEnabled(enabled: Boolean) {
@@ -79,7 +87,7 @@ class FormatConversionViewModel : ViewModel() {
     }
 
     private fun loadPreview() {
-        // This is handled by loadPreview(context) which is called from UI
+        // Obsolete
     }
 
     fun loadPreview(context: Context) {
@@ -97,6 +105,47 @@ class FormatConversionViewModel : ViewModel() {
                         }
                     }
             _uiState.update { it.copy(previewBitmap = bitmap, isLoading = false) }
+            updateEstimation(context)
+        }
+    }
+
+    private fun updateEstimation(context: Context) {
+        val uri = uiState.value.selectedUri ?: return
+        val percentage = uiState.value.scalePercentage
+        val formatSelectionEnabled = uiState.value.isFormatSelectionEnabled
+        val globalTargetFormat = uiState.value.targetFormat
+        val quality = uiState.value.quality
+        val useScaling = uiState.value.useTargetSizeScaling
+
+        estimationJob?.cancel()
+        estimationJob = viewModelScope.launch {
+            val estimatedSize = withContext(Dispatchers.IO) {
+                try {
+                    val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+                    val original = BitmapFactory.decodeStream(inputStream) ?: return@withContext 0L
+                    
+                    val targetFormat = if (formatSelectionEnabled) {
+                        globalTargetFormat
+                    } else {
+                        getFormatFromUri(context, uri)
+                    }
+
+                    val bitmapToEncode = if (useScaling && percentage < 100) {
+                        val newWidth = (original.width * (percentage / 100f)).toInt().coerceAtLeast(1)
+                        val newHeight = (original.height * (percentage / 100f)).toInt().coerceAtLeast(1)
+                        Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                    } else {
+                        original
+                    }
+
+                    val bos = java.io.ByteArrayOutputStream()
+                    encodeBitmap(bitmapToEncode, targetFormat, quality, bos)
+                    bos.size().toLong()
+                } catch (e: Exception) {
+                    0L
+                }
+            }
+            _uiState.update { it.copy(estimatedFileSize = estimatedSize) }
         }
     }
 
@@ -108,26 +157,28 @@ class FormatConversionViewModel : ViewModel() {
             val globalTargetFormat = uiState.value.targetFormat
             val quality = uiState.value.quality
             val useScaling = uiState.value.useTargetSizeScaling
-            val targetSizeLimit = uiState.value.targetFileSizeKB * 1024L
+            val percentage = uiState.value.scalePercentage
             val formatSelectionEnabled = uiState.value.isFormatSelectionEnabled
 
             withContext(Dispatchers.IO) {
                 uris.forEachIndexed { index, uri ->
                     try {
                         val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-                        var bitmap = BitmapFactory.decodeStream(inputStream)
+                        val original = BitmapFactory.decodeStream(inputStream)
 
-                        if (bitmap != null) {
-                            // Determine target format for this specific file
+                        if (original != null) {
                             val targetFormat = if (formatSelectionEnabled) {
                                 globalTargetFormat
                             } else {
                                 getFormatFromUri(context, uri)
                             }
 
-                            // Target size scaling logic
-                            if (useScaling) {
-                                bitmap = scaleToTargetSize(bitmap, targetFormat, quality, targetSizeLimit)
+                            var bitmap = if (useScaling && percentage < 100) {
+                                val newWidth = (original.width * (percentage / 100f)).toInt().coerceAtLeast(1)
+                                val newHeight = (original.height * (percentage / 100f)).toInt().coerceAtLeast(1)
+                                Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                            } else {
+                                original
                             }
 
                             val filename =
@@ -183,46 +234,6 @@ class FormatConversionViewModel : ViewModel() {
     private fun getFormatFromUri(context: Context, uri: Uri): ImageFormat {
         val mimeType = context.contentResolver.getType(uri) ?: return ImageFormat.PNG
         return ImageFormat.values().find { it.mimeType == mimeType } ?: ImageFormat.PNG
-    }
-
-    private suspend fun scaleToTargetSize(
-            original: Bitmap,
-            format: ImageFormat,
-            quality: Int,
-            targetSizeLimit: Long
-    ): Bitmap = withContext(Dispatchers.Default) {
-        var currentBitmap = original
-        var scale = 1.0
-        
-        // Initial test
-        val bos = java.io.ByteArrayOutputStream()
-        encodeBitmap(currentBitmap, format, quality, bos)
-        var currentSize = bos.size().toLong()
-        
-        // Maximum iterations to prevent infinite loop
-        var iterations = 0
-        val maxIterations = 5
-        
-        while (currentSize > targetSizeLimit && iterations < maxIterations) {
-            iterations++
-            // Heuristic scaling: size is roughly proportional to area (width * height)
-            // So factor = sqrt(target_size / current_size)
-            val factor = Math.sqrt(targetSizeLimit.toDouble() / currentSize.toDouble()) * 0.95
-            scale *= factor
-            
-            val newWidth = (original.width * scale).toInt().coerceAtLeast(1)
-            val newHeight = (original.height * scale).toInt().coerceAtLeast(1)
-            
-            if (newWidth == currentBitmap.width && newHeight == currentBitmap.height) break
-            
-            currentBitmap = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
-            
-            bos.reset()
-            encodeBitmap(currentBitmap, format, quality, bos)
-            currentSize = bos.size().toLong()
-        }
-        
-        currentBitmap
     }
 
     private fun encodeBitmap(
