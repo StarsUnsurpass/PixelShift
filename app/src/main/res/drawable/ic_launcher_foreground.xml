@@ -1,56 +1,35 @@
-﻿<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    
+    <!-- Main Image Frame Container -->
     <path
-        android:pathData="M30,30 L78,30 L78,78 L30,78 Z"
-        android:fillColor="#1A237E" />
+        android:fillColor="#6750A4"
+        android:pathData="M34,34 h40 c4.4,0 8,3.6 8,8 v32 h-40 c-4.4,0 -8,-3.6 -8,-8 z" />
+    
+    <!-- Pixel Blocks showing "Shift" and Conversion -->
+    <!-- Large Pixel -->
     <path
-        android:pathData="M30,30 L54,30 L54,54 L30,54 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="30"
-                android:startY="30"
-                android:endX="54"
-                android:endY="54"
-                android:type="linear">
-                <item android:offset="0" android:color="#00BFA5" />
-                <item android:offset="1" android:color="#00897B" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        android:fillColor="#D0BCFF"
+        android:pathData="M42,42 h10 v10 h-10 z" />
+    
+    <!-- Shifting Pixels on the right edge -->
     <path
-        android:pathData="M54,54 L78,54 L78,78 L54,78 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="54"
-                android:startY="54"
-                android:endX="78"
-                android:endY="78"
-                android:type="linear">
-                <item android:offset="0" android:color="#C51162" />
-                <item android:offset="1" android:color="#880E4F" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        android:fillColor="#EADDFF"
+        android:pathData="M54,42 h8 v8 h-8 z" />
     <path
-        android:pathData="M70,35 h6 v6 h-6 z"
-        android:fillColor="#00BFA5" />
+        android:fillColor="#EADDFF"
+        android:pathData="M54,52 h8 v8 h-8 z" />
     <path
-        android:pathData="M78,43 h6 v6 h-6 z"
-        android:fillColor="#00BFA5"
-        android:alpha="0.6" />
+        android:fillColor="#D0BCFF"
+        android:pathData="M42,54 h8 v8 h-8 z" />
+    
+    <!-- EXIF metadata indicator (info dot) -->
     <path
-        android:pathData="M35,70 v6 h6 v-6 z"
-        android:fillColor="#C51162" />
-    <path
-        android:pathData="M43,78 v6 h6 v-6 z"
-        android:fillColor="#C51162"
-        android:alpha="0.6" />
-    <path
-        android:pathData="M52,40 l4,0 l8,28 l-4,0 z"
         android:fillColor="#FFFFFF"
-        android:alpha="0.8" />
+        android:pathData="M66,66 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+        
 </vector>

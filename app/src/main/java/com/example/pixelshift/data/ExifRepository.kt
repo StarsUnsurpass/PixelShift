@@ -5,8 +5,11 @@ import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+
+private const val TAG = "ExifRepository"
 
 data class ExifTag(
     val tag: String,
@@ -56,27 +59,25 @@ class ExifRepository(private val context: Context) {
 
     suspend fun getExifMetadata(uri: Uri): List<ExifTag> = withContext(Dispatchers.IO) {
         val tags = mutableListOf<ExifTag>()
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val exifInterface = ExifInterface(inputStream)
-            
-            tagCategories.forEach { (category, tagPairs) ->
-                tagPairs.forEach { (tag, label) ->
-                    val value = exifInterface.getAttribute(tag)
-                    tags.add(ExifTag(tag, label, value, category))
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val exifInterface = ExifInterface(inputStream)
+                
+                tagCategories.forEach { (category, tagPairs) ->
+                    tagPairs.forEach { (tag, label) ->
+                        val value = exifInterface.getAttribute(tag)
+                        tags.add(ExifTag(tag, label, value, category))
+                    }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading EXIF", e)
         }
         tags
     }
 
     suspend fun updateExifMetadata(uri: Uri, updatedTags: Map<String, String>): Boolean = withContext(Dispatchers.IO) {
         try {
-            // Since ExifInterface requires a File or FileDescriptor for writing, 
-            // we need to copy the content to a temp file if it's a content URI,
-            // or use the File directly if possible.
-            // For simplicity and safety with modern Android Scoped Storage, 
-            // we'll work on a temporary copy and then write it back.
-            
             val tempFile = File(context.cacheDir, "temp_exif_edit.jpg")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
@@ -94,16 +95,17 @@ class ExifRepository(private val context: Context) {
             }
             exifInterface.saveAttributes()
 
-            // Write back to the original URI
-            context.contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+            // Try to write back to the original URI
+            context.contentResolver.openOutputStream(uri, "w")?.use { output ->
                 tempFile.inputStream().use { input ->
                     input.copyTo(output)
                 }
-            }
+            } ?: throw Exception("Could not open output stream for URI: $uri")
+            
             tempFile.delete()
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error updating EXIF", e)
             false
         }
     }
@@ -119,22 +121,34 @@ class ExifRepository(private val context: Context) {
 
             val exifInterface = ExifInterface(tempFile.absolutePath)
             
-            // List of all known tags to clear
-            val allTags = tagCategories.values.flatten().map { it.first }
-            allTags.forEach { tag ->
+            // Comprehensive clear list
+            val tagsToClear = listOf(
+                ExifInterface.TAG_GPS_LATITUDE, ExifInterface.TAG_GPS_LATITUDE_REF,
+                ExifInterface.TAG_GPS_LONGITUDE, ExifInterface.TAG_GPS_LONGITUDE_REF,
+                ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
+                ExifInterface.TAG_GPS_TIMESTAMP, ExifInterface.TAG_GPS_DATESTAMP,
+                ExifInterface.TAG_MAKE, ExifInterface.TAG_MODEL,
+                ExifInterface.TAG_DATETIME, ExifInterface.TAG_USER_COMMENT,
+                ExifInterface.TAG_ARTIST, ExifInterface.TAG_COPYRIGHT,
+                ExifInterface.TAG_SOFTWARE, ExifInterface.TAG_IMAGE_DESCRIPTION
+            )
+
+            tagsToClear.forEach { tag ->
                 exifInterface.setAttribute(tag, null)
             }
+            
             exifInterface.saveAttributes()
 
-            context.contentResolver.openOutputStream(uri, "rwt")?.use { output ->
+            context.contentResolver.openOutputStream(uri, "w")?.use { output ->
                 tempFile.inputStream().use { input ->
                     input.copyTo(output)
                 }
-            }
+            } ?: throw Exception("Could not open output stream for URI: $uri")
+            
             tempFile.delete()
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error clearing EXIF", e)
             false
         }
     }
