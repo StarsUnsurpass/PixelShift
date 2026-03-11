@@ -13,4 +13,7 @@ sealed class Screen(val route: String) {
         fun createRoute(mode: String? = null) = "format_conversion?mode=$mode"
     }
     object Settings : Screen("settings")
+    object ExifEditor : Screen("exif_editor?uri={uri}") {
+        fun createRoute(uri: String) = "exif_editor?uri=$uri"
+    }
 }
