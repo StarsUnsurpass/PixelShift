@@ -60,18 +60,25 @@ class ExifRepository(private val context: Context) {
     suspend fun getExifMetadata(uri: Uri): List<ExifTag> = withContext(Dispatchers.IO) {
         val tags = mutableListOf<ExifTag>()
         try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                val exifInterface = ExifInterface(inputStream)
-                
-                tagCategories.forEach { (category, tagPairs) ->
-                    tagPairs.forEach { (tag, label) ->
-                        val value = exifInterface.getAttribute(tag)
-                        tags.add(ExifTag(tag, label, value, category))
-                    }
+            // Copying to temp file for reading is often more reliable than direct stream
+            val tempFile = File(context.cacheDir, "temp_exif_read.jpg")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
                 }
             }
+
+            val exifInterface = ExifInterface(tempFile.absolutePath)
+            
+            tagCategories.forEach { (category, tagPairs) ->
+                tagPairs.forEach { (tag, label) ->
+                    val value = exifInterface.getAttribute(tag)
+                    tags.add(ExifTag(tag, label, value, category))
+                }
+            }
+            tempFile.delete()
         } catch (e: Exception) {
-            Log.e(TAG, "Error reading EXIF", e)
+            Log.e(TAG, "Error reading EXIF from $uri", e)
         }
         tags
     }
